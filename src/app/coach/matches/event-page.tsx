@@ -3,6 +3,7 @@ import { loadMatch } from "./load";
 import { BackLink } from "./ui";
 import { EventForm } from "./event-form";
 import { notFound } from "next/navigation";
+import { getRole } from "@/lib/role";
 
 /** 골/실점 입력 화면 (새로 만들기·고치기 공용) */
 export async function EventPage({
@@ -16,7 +17,7 @@ export async function EventPage({
   side: Side;
   saved?: boolean;
 }) {
-  const { match, roster, events, tags } = await loadMatch(matchId);
+  const [{ match, roster, events, tags }, role] = await Promise.all([loadMatch(matchId), getRole()]);
   const event = eventId ? events.find((e) => e.id === eventId) : null;
   if (eventId && !event) notFound();
 
@@ -73,6 +74,7 @@ export async function EventPage({
                 }
           }
           prefilledFromLast={!event && Boolean(last?.onCourt.length)}
+          canDelete={role === "coach"}
         />
       )}
     </main>

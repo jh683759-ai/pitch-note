@@ -15,6 +15,7 @@ export function EventForm({
   tags,
   initial,
   prefilledFromLast,
+  canDelete,
 }: {
   matchId: string;
   eventId: string | null;
@@ -22,6 +23,8 @@ export function EventForm({
   tags: Tag[];
   initial: GoalEventInput;
   prefilledFromLast: boolean;
+  /** 기록 삭제는 감독만 (기록원은 고치기만) */
+  canDelete: boolean;
 }) {
   const [v, setV] = useState<GoalEventInput>(initial);
   const [error, setError] = useState<string | null>(null);
@@ -200,7 +203,10 @@ export function EventForm({
 
       <ErrorBox error={error} />
 
-      {eventId && (
+      {eventId && !canDelete && (
+        <p className="border-t border-line pt-4 text-center text-xs text-muted">기록 삭제는 감독만 할 수 있어요. 잘못 넣었으면 고쳐서 저장하세요.</p>
+      )}
+      {eventId && canDelete && (
         <div className="border-t border-line pt-4">
           {confirmDelete ? (
             <div className="flex gap-2">

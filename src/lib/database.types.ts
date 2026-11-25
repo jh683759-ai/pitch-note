@@ -123,6 +123,8 @@ export type Database = {
       };
       goal_events: {
         Row: {
+          created_by: string | null;
+          updated_by: string | null;
           assist_id: string | null;
           created_at: string;
           goalkeeper_id: string | null;
@@ -138,6 +140,8 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          created_by?: string | null;
+          updated_by?: string | null;
           assist_id?: string | null;
           created_at?: string;
           goalkeeper_id?: string | null;
@@ -152,6 +156,8 @@ export type Database = {
           side: string;
         };
         Update: {
+          created_by?: string | null;
+          updated_by?: string | null;
           assist_id?: string | null;
           created_at?: string;
           goalkeeper_id?: string | null;
@@ -335,6 +341,8 @@ export type Database = {
       };
       matches: {
         Row: {
+          created_by: string | null;
+          updated_by: string | null;
           created_at: string;
           id: string;
           kickoff_time: string | null;
@@ -352,6 +360,8 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          created_by?: string | null;
+          updated_by?: string | null;
           created_at?: string;
           id?: string;
           kickoff_time?: string | null;
@@ -368,6 +378,8 @@ export type Database = {
           venue?: string | null;
         };
         Update: {
+          created_by?: string | null;
+          updated_by?: string | null;
           created_at?: string;
           id?: string;
           kickoff_time?: string | null;
@@ -399,6 +411,37 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      members: {
+        Row: {
+          approved_at: string | null;
+          approved_by: string | null;
+          display_name: string;
+          email: string | null;
+          requested_at: string;
+          status: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          approved_at?: string | null;
+          approved_by?: string | null;
+          display_name: string;
+          email?: string | null;
+          requested_at?: string;
+          status?: string;
+          user_id: string;
+        };
+        Update: {
+          approved_at?: string | null;
+          approved_by?: string | null;
+          display_name?: string;
+          email?: string | null;
+          requested_at?: string;
+          status?: string;
+          user_id?: string;
+        };
+        Relationships: [];
       };
       players: {
         Row: {
@@ -694,6 +737,9 @@ export type Database = {
     Functions: {
       ensure_season_for: { Args: { p_date: string }; Returns: string };
       is_coach: { Args: Record<PropertyKey, never>; Returns: boolean };
+      is_recorder: { Args: Record<PropertyKey, never>; Returns: boolean };
+      my_role: { Args: Record<PropertyKey, never>; Returns: string };
+      staff_names: { Args: Record<PropertyKey, never>; Returns: { display_name: string; user_id: string }[] };
       previous_attendance: {
         Args: { p_match_id: string };
         Returns: {

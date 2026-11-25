@@ -15,13 +15,15 @@ import {
 import { sharePath, siteUrl } from "@/lib/site";
 import { GoalDiffBars } from "@/components/goal-diff-bars";
 import { ShareLinkControls } from "./share/share-controls";
+import { getRole } from "@/lib/role";
 
 export const metadata = { title: "홈 · pitch-note" };
 
 // 감독 홈: 지금 상황과 다음 할 일만. 숫자는 표본이 충분할 때만 보인다.
 export default async function CoachHome() {
   const supabase = await createClient();
-  const [matchesRes, summaryRes, playersRes, shareRes] = await Promise.all([
+  const isCoach = (await getRole()) === "coach";
+  const [matchesRes, summaryRes, playersRes, shareRes, pendingRes] = await Promise.all([
     supabase
       .from("matches")
       .select("id, played_on, created_at, opponent, our_score, their_score, season_id, status, match_notes(kind, body, sort_order)")
@@ -31,7 +33,10 @@ export default async function CoachHome() {
     supabase.from("match_summary").select("match_id, players_played, events_missing"),
     supabase.from("players").select("id, name, jersey_number, is_active, membership"),
     supabase.from("share_links").select("token").is("revoked_at", null).order("created_at", { ascending: false }).limit(1),
+    // 감독만 보인다 (RLS). 기록원은 0명으로 나온다.
+    supabase.from("members").select("user_id", { count: "exact", head: true }).eq("status", "pending"),
   ]);
+  const pendingCount = isCoach ? (pendingRes.count ?? 0) : 0;
   for (const r of [matchesRes, summaryRes, playersRes, shareRes]) {
     if (r.error) return <p className="mt-8 text-danger">홈을 불러오지 못했어요: {r.error.message}</p>;
   }
@@ -55,7 +60,8 @@ export default async function CoachHome() {
             + 경기 기록
           </Link>
         </div>
-        <ShareSection url={shareUrl} />
+        {isCoach && <TeamCard pending={pendingCount} />}
+        {isCoach && <ShareSection url={shareUrl} />}
       </main>
     );
   }
@@ -87,7 +93,7 @@ export default async function CoachHome() {
             href: `/coach/matches/${latest.id}`,
             cta: "이어서",
           }
-        : !hasReview && focus.length === 0
+        : isCoach && !hasReview && focus.length === 0
           ? { text: "메모와 다음 경기 포인트가 비어 있어요", href: `/coach/matches/${latest.id}/notes`, cta: "쓰기" }
           : null;
 
@@ -152,10 +158,16 @@ export default async function CoachHome() {
           </ol>
         ) : (
           <p className="mt-1 text-sm text-muted">
-            지난 경기 메모에서 1~3개 정해두면 다음 경기 전에 여기 그대로 떠요.{" "}
-            <Link href={`/coach/matches/${latest.id}/notes`} className="text-pitch underline">
-              정하기
-            </Link>
+            {isCoach ? (
+              <>
+                지난 경기 메모에서 1~3개 정해두면 다음 경기 전에 여기 그대로 떠요.{" "}
+                <Link href={`/coach/matches/${latest.id}/notes`} className="text-pitch underline">
+                  정하기
+                </Link>
+              </>
+            ) : (
+              "감독이 팀에 공개한 포인트가 여기 떠요."
+            )}
           </p>
         )}
         <p className="mt-2 text-xs text-muted">
@@ -243,8 +255,29 @@ export default async function CoachHome() {
         </section>
       )}
 
-      <ShareSection url={shareUrl} />
+      {isCoach && <TeamCard pending={pendingCount} />}
+      {isCoach && <ShareSection url={shareUrl} />}
     </main>
+  );
+}
+
+/** 기록원 관리 바로가기. 신청이 있으면 눈에 띄게. */
+function TeamCard({ pending }: { pending: number }) {
+  return (
+    <Link
+      href="/coach/team"
+      className={`card flex items-center gap-3 p-4 ${pending > 0 ? "border-pitch ring-1 ring-pitch/30" : ""}`}
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold">기록원 관리</span>
+        <span className="block text-xs text-muted">
+          {pending > 0 ? `승인 대기 ${pending}명이 있어요` : "내가 경기 뛰는 날 대신 기록할 팀원"}
+        </span>
+      </span>
+      <span className={`shrink-0 text-sm ${pending > 0 ? "font-semibold text-pitch" : "text-muted"}`}>
+        {pending > 0 ? "확인 →" : "→"}
+      </span>
+    </Link>
   );
 }
 

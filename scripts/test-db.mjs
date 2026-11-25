@@ -13,7 +13,7 @@ await db.exec(`
   create role anon nologin;
   create role authenticated nologin;
   create schema auth;
-  create table auth.users (id uuid primary key, email text);
+  create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb);
   create function auth.uid() returns uuid language sql stable as
     $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant usage on schema auth to anon, authenticated;
@@ -404,5 +404,118 @@ await as("anon", null, async () => {
   assert.equal(none2, null);
   ok("끊은 링크·틀린 토큰은 아무것도 안 보인다");
 });
+
+
+// --- 7. 4주차: 기록원 (가입 신청 → 감독 승인) -------------------------------
+console.log("기록원 (4주차)");
+const REC = "00000000-0000-0000-0000-0000000000ec";
+const OTHER = "00000000-0000-0000-0000-0000000000e2";
+await db.exec(`
+  insert into auth.users values
+    ('${REC}', 'rec@example.com', '{"signup":"pitch-note","display_name":"주장"}'),
+    ('${OTHER}', 'other@example.com', '{"signup":"pitch-note"}');
+`);
+{
+  const rows = await q(`select user_id, display_name, status from members order by display_name`);
+  assert.deepEqual(rows.map((r) => `${r.display_name}:${r.status}`), ["other:pending", "주장:pending"]);
+  assert.equal((await q(`select * from members where user_id = $1`, [STRANGER])).length, 0);
+  ok("앱에서 가입한 계정만 승인 대기로 올라온다 (이름 없으면 이메일 앞부분)");
+}
+
+await as("authenticated", REC, async () => {
+  const [{ my_role }] = await q(`select my_role()`);
+  assert.equal(my_role, "pending");
+  assert.equal((await q(`select * from matches`)).length, 0);
+  await rejects(q(`insert into matches (season_id, played_on, opponent, our_score, their_score) values ($1, '2026-12-20', '승인 전', 0, 0)`, [ids.season]), /row-level security/, "승인 전에는 경기를 못 만든다");
+  assert.equal((await q(`update members set status = 'recorder' where user_id = $1 returning *`, [REC])).length, 0);
+  ok("스스로 기록원으로 승격할 수 없다");
+  const [me] = await q(`select status from members where user_id = $1`, [REC]);
+  assert.equal(me.status, "pending");
+  assert.equal((await q(`select * from members`)).length, 1);
+  ok("승인 대기 중에는 아무것도 못 보고, 다른 신청자도 안 보인다");
+  assert.equal((await q(`select * from staff_names()`)).length, 0);
+  ok("승인 전에는 기록한 사람 이름 목록도 안 보인다");
+});
+
+await as("authenticated", COACH, async () => {
+  assert.equal((await q(`select * from members`)).length, 2);
+  await q(`update members set status = 'recorder', approved_at = now(), approved_by = $2 where user_id = $1`, [REC, COACH]);
+  await q(`delete from members where user_id = $1`, [OTHER]);
+  ok("감독은 신청 목록을 보고 승인·거절한다");
+});
+
+const rec = await as("authenticated", REC, async () => {
+  const P = ids.players;
+  const [{ my_role }] = await q(`select my_role()`);
+  assert.equal(my_role, "recorder");
+
+  // 경기 만들기 → 출석 → 골 기록 → 고치기
+  const [{ ensure_season_for: sid }] = await q(`select ensure_season_for('2026-12-20')`);
+  const [m] = await q(`insert into matches (season_id, played_on, opponent, our_score, their_score) values ($1, '2026-12-20', '기록원 경기', 0, 0) returning id, created_by`, [sid]);
+  assert.equal(m.created_by, REC);
+  const [guest] = await q(`insert into players (name, membership) values ('당일용병', 'guest') returning id`);
+  await rejects(q(`insert into players (name) values ('고정멤버 추가')`), /row-level security/, "기록원은 고정 멤버를 추가할 수 없다 (용병만)");
+  const rows = JSON.stringify([P.GK, P.A, P.B, P.C, P.D, guest.id].map((player_id) => ({ player_id, status: "played" })));
+  await q(`select set_attendance($1, $2::jsonb)`, [m.id, rows]);
+  const tagId = (await q(`select id from event_tags where kind = 'goal_type' and code = 'counter'`))[0].id;
+  const [{ id: g }] = await q(`select save_goal_event(p_match_id => $1, p_side => 'for', p_scorer_id => $2, p_tag_ids => $3::smallint[], p_on_court => $4::uuid[]) as id`,
+    [m.id, P.D, [tagId], [P.A, P.B, P.C, P.D]]);
+  await q(`select save_goal_event(p_match_id => $1, p_side => 'for', p_scorer_id => $2, p_on_court => $3::uuid[], p_event_id => $4)`, [m.id, guest.id, [P.A, P.B, guest.id, P.D], g]);
+  const [ev] = await q(`select scorer_id, created_by, updated_by from goal_events where id = $1`, [g]);
+  assert.equal(ev.scorer_id, guest.id);
+  assert.equal(ev.created_by, REC);
+  assert.equal(ev.updated_by, REC);
+  await q(`update matches set our_score = 2, their_score = 1 where id = $1`, [m.id]);
+  ok("기록원: 경기 만들기·용병 추가·출석·골 기록·고치기·스코어");
+
+  // 삭제는 못 한다 (정책이 없으니 0행 삭제)
+  const delM = await q(`delete from matches where id = $1 returning id`, [m.id]);
+  const delG = await q(`delete from goal_events where id = $1 returning id`, [g]);
+  const delP = await q(`delete from players where id = $1 returning id`, [guest.id]);
+  assert.equal(delM.length + delG.length + delP.length, 0);
+  assert.equal((await q(`select id from matches where id = $1`, [m.id])).length, 1);
+  assert.equal((await q(`select id from goal_events where id = $1`, [g])).length, 1);
+  ok("기록원은 경기·골 기록·선수를 지울 수 없다");
+
+  // 감독 영역
+  assert.equal((await q(`update players set name = '이름바꾸기' where id = $1 returning id`, [P.A])).length, 0);
+  ok("기록원은 선수 정보를 못 고친다");
+  await rejects(q(`update matches set mvp_player_id = $2 where id = $1`, [m.id, P.D]), /감독만/, "기록원은 MVP를 고를 수 없다");
+  await rejects(q(`insert into match_notes (match_id, kind, body, visibility) values ($1, 'good', '기록원 메모', 'team')`, [m.id]), /row-level security/, "기록원은 메모를 못 쓴다");
+  assert.equal((await q(`select * from share_links`)).length, 0);
+  await rejects(q(`insert into share_links (label) values ('몰래')`), /row-level security/, "기록원은 공유 링크를 못 만든다");
+  const notes = await q(`select visibility from match_notes`);
+  assert.ok(notes.length > 0 && notes.every((n) => n.visibility === "team"));
+  ok("기록원은 '팀 공개' 메모만 보이고, 메모·MVP·공유 링크·선수 수정은 감독만");
+
+  const names = await q(`select * from staff_names()`);
+  assert.deepEqual(names.map((n) => n.display_name).sort(), ["감독", "주장"]);
+  ok("기록한 사람 이름 목록 (감독·기록원)");
+  return { match: m.id, event: g };
+});
+
+await as("authenticated", COACH, async () => {
+  await q(`update matches set opponent = '감독이 고침' where id = $1`, [rec.match]);
+  const [m] = await q(`select created_by, updated_by from matches where id = $1`, [rec.match]);
+  assert.deepEqual([m.created_by, m.updated_by], [REC, COACH]);
+  ok("만든 사람은 그대로, 마지막 수정자는 감독");
+  assert.equal((await q(`delete from goal_events where id = $1 returning id`, [rec.event])).length, 1);
+  assert.equal((await q(`delete from matches where id = $1 returning id`, [rec.match])).length, 1);
+  ok("감독은 기록원이 만든 기록도 지울 수 있다");
+  await q(`delete from members where user_id = $1`, [REC]);
+});
+
+await as("authenticated", REC, async () => {
+  const [{ my_role }] = await q(`select my_role()`);
+  assert.equal(my_role, "none");
+  assert.equal((await q(`select * from matches`)).length, 0);
+  ok("권한을 빼면 바로 아무것도 안 보인다");
+  await rejects(q(`insert into members (user_id, display_name, status) values ($1, '주장', 'recorder')`, [REC]), /row-level security/, "다시 신청할 때 스스로 기록원이 될 수 없다");
+  await q(`insert into members (user_id, display_name) values ($1, '주장')`, [REC]);
+  const [{ my_role: again }] = await q(`select my_role()`);
+  assert.equal(again, "pending");
+  ok("권한이 빠진 사람은 다시 '승인 대기'로 신청할 수 있다");
+});
+await as("anon", null, () => rejects(q(`select * from members`), /permission denied/, "anon은 신청 목록을 못 본다"));
 
 console.log("\nall DB tests passed");
