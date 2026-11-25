@@ -19,8 +19,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated;
   grant execute on function auth.uid() to anon, authenticated;
   grant usage on schema public to anon, authenticated;
-  alter default privileges in schema public grant all on tables to anon, authenticated;
-  alter default privileges in schema public grant all on sequences to anon, authenticated;
+  -- 기본 권한(default privileges)은 주지 않는다: 마이그레이션이 직접 GRANT 하는지 검증
 `);
 
 for (const f of (await readdir(MIG_DIR)).filter((f) => f.endsWith(".sql")).sort()) {

@@ -577,5 +577,14 @@ create policy goal_event_on_court_coach_all on public.goal_event_on_court
 create policy share_links_coach_all on public.share_links
   for all to authenticated using ((select public.is_coach())) with check ((select public.is_coach()));
 
+-- =====================================================================
+-- 테이블 권한(GRANT). 프로젝트의 "새 테이블에 API 권한 자동 부여" 설정에
+-- 기대지 않고 여기서 직접 준다. 행 단위 제한은 위 RLS가 한다.
+-- =====================================================================
 -- anon은 아무 권한 없음 (공유 페이지는 3주차에 security definer 함수로만)
 revoke all on all tables in schema public from anon;
+revoke all on all sequences in schema public from anon;
+
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
