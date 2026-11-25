@@ -118,13 +118,7 @@ create table public.matches (
                        check (status in ('scheduled', 'finished', 'cancelled')),
   our_score          smallint check (our_score >= 0),
   their_score        smallint check (their_score >= 0),
-  -- 경기 전 계획 vs 실제 (경기 리뷰 화면에서 나란히 본다)
-  pre_match_plan     text check (length(pre_match_plan) <= 1000),
-  -- 감독 메모: 결과보다 과정. 유튜브 복기 소재.
-  memo_good          text check (length(memo_good) <= 2000),
-  memo_improve       text check (length(memo_improve) <= 2000),
-  -- 다음 훈련에서 할 것 (다음 행동)
-  next_training_memo text check (length(next_training_memo) <= 1000),
+  -- 계획·리뷰·다음 경기 준비 메모는 match_notes 테이블 (메모마다 공개 범위가 달라서)
   -- 영상·사진은 저장하지 않고 링크만
   media_url          text check (media_url ~ '^https?://'),
   created_at         timestamptz not null default now(),
@@ -139,6 +133,60 @@ create index matches_played_idx on public.matches (played_on desc);
 create trigger matches_set_updated_at
   before update on public.matches
   for each row execute function public.set_updated_at();
+
+-- ---------------------------------------------------------------------
+-- 경기 메모: 계획 / 잘된 점 / 개선점 / 다음 경기 포인트 / 선수 개인 코멘트
+-- 메모 한 줄마다 공개 범위가 있다.
+--   team  = 공유 링크로 선수들도 본다 (경기 리뷰, 이번 주 포인트)
+--   coach = 감독만 본다 (기본값. 실수로 공개되는 일이 없게)
+-- 선수 개인 코멘트(kind=player)는 항상 감독만.
+-- ---------------------------------------------------------------------
+create table public.match_notes (
+  id         uuid primary key default gen_random_uuid(),
+  match_id   uuid not null references public.matches (id) on delete cascade,
+  -- plan=경기 전 계획, good=잘된 점, improve=개선점,
+  -- next_focus=다음 경기까지 이번 주 포인트(최대 3개), player=선수 개인 코멘트
+  kind       text not null check (kind in ('plan', 'good', 'improve', 'next_focus', 'player')),
+  player_id  uuid references public.players (id) on delete restrict,
+  body       text not null check (length(trim(body)) between 1 and 1000),
+  visibility text not null default 'coach' check (visibility in ('team', 'coach')),
+  sort_order smallint not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  -- 선수 코멘트에만 선수를 붙이고, 선수 코멘트는 공개할 수 없다
+  check ((kind = 'player') = (player_id is not null)),
+  check (kind <> 'player' or visibility = 'coach')
+);
+
+comment on column public.match_notes.visibility is 'team=공유 링크에 공개, coach=감독만';
+
+create index match_notes_match_idx on public.match_notes (match_id, kind, sort_order);
+create index match_notes_player_idx on public.match_notes (player_id) where player_id is not null;
+
+create trigger match_notes_set_updated_at
+  before update on public.match_notes
+  for each row execute function public.set_updated_at();
+
+-- 다음 경기 포인트는 경기당 3개까지 (많으면 아무것도 기억 못 한다)
+create or replace function public.check_next_focus_limit()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.kind = 'next_focus' and (
+    select count(*) from public.match_notes n
+    where n.match_id = new.match_id and n.kind = 'next_focus' and n.id <> new.id
+  ) >= 3 then
+    raise exception '다음 경기 포인트는 3개까지입니다'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger match_notes_next_focus_limit
+  before insert or update on public.match_notes
+  for each row execute function public.check_next_focus_limit();
 
 -- ---------------------------------------------------------------------
 -- 출석·출전
@@ -496,6 +544,7 @@ alter table public.players             enable row level security;
 alter table public.seasons             enable row level security;
 alter table public.matches             enable row level security;
 alter table public.match_attendance    enable row level security;
+alter table public.match_notes         enable row level security;
 alter table public.event_tags          enable row level security;
 alter table public.goal_events         enable row level security;
 alter table public.goal_event_tags     enable row level security;
@@ -514,6 +563,8 @@ create policy seasons_coach_all on public.seasons
 create policy matches_coach_all on public.matches
   for all to authenticated using ((select public.is_coach())) with check ((select public.is_coach()));
 create policy match_attendance_coach_all on public.match_attendance
+  for all to authenticated using ((select public.is_coach())) with check ((select public.is_coach()));
+create policy match_notes_coach_all on public.match_notes
   for all to authenticated using ((select public.is_coach())) with check ((select public.is_coach()));
 create policy event_tags_coach_all on public.event_tags
   for all to authenticated using ((select public.is_coach())) with check ((select public.is_coach()));

@@ -56,6 +56,7 @@ function ok(name) {
 console.log("RLS");
 await as("anon", null, () => rejects(q("select * from players"), /permission denied/, "anon은 선수 테이블을 못 읽는다"));
 await as("anon", null, () => rejects(q("select * from player_season_stats"), /permission denied/, "anon은 집계 뷰도 못 읽는다"));
+await as("anon", null, () => rejects(q("select * from match_notes"), /permission denied/, "anon은 경기 메모를 직접 못 읽는다"));
 await as("authenticated", STRANGER, async () => {
   await rejects(q("insert into players (name) values ('침입자')"), /row-level security/, "감독이 아닌 로그인 사용자는 쓸 수 없다");
   assert.equal((await q("select * from event_tags")).length, 0);
@@ -83,8 +84,8 @@ const ids = await as("authenticated", COACH, async () => {
 
   await rejects(q(`insert into matches (season_id, played_on, opponent, status) values ($1, '2026-11-22', '스코어없음', 'finished')`, [season.id]), /check constraint/, "끝난 경기는 스코어가 필수");
 
-  const [m] = await q(`insert into matches (season_id, played_on, opponent, our_score, their_score, memo_good, memo_improve, next_training_memo)
-    values ($1, '2026-11-22', '청년부B', 3, 2, '전방 압박', '전환 수비', '2대1 전환 훈련') returning id`, [season.id]);
+  const [m] = await q(`insert into matches (season_id, played_on, opponent, our_score, their_score)
+    values ($1, '2026-11-22', '청년부B', 3, 2) returning id`, [season.id]);
 
   for (const n of ["GK", "A", "B", "C", "D", "G"]) {
     await q(`insert into match_attendance (match_id, player_id) values ($1, $2)`, [m.id, players[n]]);
@@ -115,6 +116,23 @@ const ids = await as("authenticated", COACH, async () => {
   await rejects(q(`insert into goal_event_on_court values ($1, $2)`, [c1, players.G]), /최대 4명/, "코트 위 필드 플레이어는 최대 4명");
   await rejects(q(`insert into goal_events (match_id, side, seq, scorer_id) values ($1, 'for', 9, $2)`, [m.id, players.E]), /출전 명단/, "불참한 선수는 득점자가 될 수 없다");
   await rejects(q(`insert into goal_events (match_id, side, seq, scorer_id) values ($1, 'against', 9, $2)`, [m.id, players.A]), /check constraint/, "실점 이벤트에는 우리 득점자가 없다");
+
+  // 경기 메모: 공개 범위
+  await q(`insert into match_notes (match_id, kind, body, visibility) values
+    ($1, 'good', '전방 압박으로 2골', 'team'),
+    ($1, 'improve', '전환 수비 늦음', 'team'),
+    ($1, 'next_focus', '공 뺏기면 3초 안에 압박', 'team'),
+    ($1, 'next_focus', '킥인 약속 2개', 'team'),
+    ($1, 'plan', '상대 7번 마크', 'coach')`, [m.id]);
+  const [n] = await q(`insert into match_notes (match_id, kind, body) values ($1, 'improve', '감독만 볼 메모') returning visibility`, [m.id]);
+  assert.equal(n.visibility, "coach");
+  ok("메모 공개 범위 기본값은 감독만(coach)");
+  await q(`insert into match_notes (match_id, kind, body, visibility) values ($1, 'next_focus', '세 번째 포인트', 'team')`, [m.id]);
+  await rejects(q(`insert into match_notes (match_id, kind, body, visibility) values ($1, 'next_focus', '네 번째', 'team')`, [m.id]), /3개까지/, "다음 경기 포인트는 3개까지");
+  await rejects(q(`insert into match_notes (match_id, kind, player_id, body, visibility) values ($1, 'player', $2, '수비 위치 좋아짐', 'team')`, [m.id, players.A]), /check constraint/, "선수 개인 코멘트는 공개할 수 없다");
+  await q(`insert into match_notes (match_id, kind, player_id, body) values ($1, 'player', $2, '수비 위치 좋아짐')`, [m.id, players.A]);
+  await rejects(q(`insert into match_notes (match_id, kind, body) values ($1, 'player', '선수 없음')`, [m.id]), /check constraint/, "선수 코멘트에는 선수가 있어야 한다");
+  ok("선수 개인 코멘트는 감독만 보는 메모로 저장");
 
   await rejects(q(`delete from players where id = $1`, [players.D]), /foreign key/, "기록이 있는 선수는 삭제되지 않는다 (보관만)");
   return { season: season.id, players, match: m.id };

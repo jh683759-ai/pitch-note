@@ -267,6 +267,72 @@ export type Database = {
           },
         ];
       };
+      match_notes: {
+        Row: {
+          body: string;
+          created_at: string;
+          id: string;
+          kind: string;
+          match_id: string;
+          player_id: string | null;
+          sort_order: number;
+          updated_at: string;
+          visibility: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          body: string;
+          created_at?: string;
+          id?: string;
+          kind: string;
+          match_id: string;
+          player_id?: string | null;
+          sort_order?: number;
+          updated_at?: string;
+          visibility?: string;
+        };
+        Update: {
+          body?: string;
+          created_at?: string;
+          id?: string;
+          kind?: string;
+          match_id?: string;
+          player_id?: string | null;
+          sort_order?: number;
+          updated_at?: string;
+          visibility?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "match_notes_match_id_fkey";
+            columns: ["match_id"];
+            isOneToOne: false;
+            referencedRelation: "match_summary";
+            referencedColumns: ["match_id"];
+          },
+          {
+            foreignKeyName: "match_notes_match_id_fkey";
+            columns: ["match_id"];
+            isOneToOne: false;
+            referencedRelation: "matches";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "match_notes_match_id_fkey";
+            columns: ["match_id"];
+            isOneToOne: false;
+            referencedRelation: "tag_counts";
+            referencedColumns: ["match_id"];
+          },
+          {
+            foreignKeyName: "match_notes_player_id_fkey";
+            columns: ["player_id"];
+            isOneToOne: false;
+            referencedRelation: "players";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       matches: {
         Row: {
           created_at: string;
@@ -274,13 +340,9 @@ export type Database = {
           kickoff_time: string | null;
           match_type: string;
           media_url: string | null;
-          memo_good: string | null;
-          memo_improve: string | null;
-          next_training_memo: string | null;
           opponent: string;
           our_score: number | null;
           played_on: string;
-          pre_match_plan: string | null;
           season_id: string;
           status: string;
           their_score: number | null;
@@ -294,13 +356,9 @@ export type Database = {
           kickoff_time?: string | null;
           match_type?: string;
           media_url?: string | null;
-          memo_good?: string | null;
-          memo_improve?: string | null;
-          next_training_memo?: string | null;
           opponent: string;
           our_score?: number | null;
           played_on: string;
-          pre_match_plan?: string | null;
           season_id: string;
           status?: string;
           their_score?: number | null;
@@ -313,13 +371,9 @@ export type Database = {
           kickoff_time?: string | null;
           match_type?: string;
           media_url?: string | null;
-          memo_good?: string | null;
-          memo_improve?: string | null;
-          next_training_memo?: string | null;
           opponent?: string;
           our_score?: number | null;
           played_on?: string;
-          pre_match_plan?: string | null;
           season_id?: string;
           status?: string;
           their_score?: number | null;
