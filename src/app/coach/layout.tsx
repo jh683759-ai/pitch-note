@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getRole } from "@/lib/role";
@@ -55,9 +54,8 @@ export default async function CoachLayout({ children }: { children: React.ReactN
       <header className="sticky top-0 z-10 border-b border-line bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-xl items-center justify-between px-4">
           <div className="flex items-center gap-4">
-            <Link href="/coach" className="font-bold text-pitch">
-              pitch-note
-            </Link>
+            {/* 홈 탭과 같은 동작이 겹쳐서 로고는 링크가 아니다 */}
+            <span className="font-bold text-pitch">pitch-note</span>
             <CoachNav isCoach={isCoach} />
           </div>
           <div className="flex items-center gap-3">
