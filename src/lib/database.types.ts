@@ -559,6 +559,74 @@ export type Database = {
           },
         ];
       };
+      pair_goal_diff: {
+        Row: {
+          events: number | null;
+          goal_diff: number | null;
+          goals_against: number | null;
+          goals_for: number | null;
+          player_a: string;
+          player_b: string;
+          season_id: string;
+        };
+        ComputedFields: never;
+        Relationships: [
+          {
+            foreignKeyName: "matches_season_id_fkey";
+            columns: ["season_id"];
+            isOneToOne: false;
+            referencedRelation: "seasons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      player_match_log: {
+        Row: {
+          assists: number | null;
+          conceded_as_gk: number | null;
+          goals: number | null;
+          match_id: string;
+          membership: string;
+          on_court_against: number | null;
+          on_court_for: number | null;
+          opponent: string;
+          played_on: string;
+          player_id: string;
+          season_id: string;
+          status: string;
+        };
+        ComputedFields: never;
+        Relationships: [
+          {
+            foreignKeyName: "matches_season_id_fkey";
+            columns: ["season_id"];
+            isOneToOne: false;
+            referencedRelation: "seasons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      player_on_court_stats: {
+        Row: {
+          events: number | null;
+          name: string;
+          on_court_against: number | null;
+          on_court_diff: number | null;
+          on_court_for: number | null;
+          player_id: string;
+          season_id: string;
+        };
+        ComputedFields: never;
+        Relationships: [
+          {
+            foreignKeyName: "matches_season_id_fkey";
+            columns: ["season_id"];
+            isOneToOne: false;
+            referencedRelation: "seasons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       player_season_stats: {
         Row: {
           appearances: number | null;
@@ -614,7 +682,35 @@ export type Database = {
       };
     };
     Functions: {
+      ensure_season_for: { Args: { p_date: string }; Returns: string };
       is_coach: { Args: Record<PropertyKey, never>; Returns: boolean };
+      previous_attendance: {
+        Args: { p_match_id: string };
+        Returns: {
+          player_id: string;
+          source_match_id: string;
+          source_opponent: string;
+          source_played_on: string;
+          status: string;
+        }[];
+      };
+      save_goal_event: {
+        Args: {
+          p_assist_id?: string | null;
+          p_event_id?: string | null;
+          p_goalkeeper_id?: string | null;
+          p_is_own_goal?: boolean;
+          p_match_id: string;
+          p_note?: string | null;
+          p_on_court?: string[];
+          p_scorer_id?: string | null;
+          p_side: string;
+          p_tag_ids?: number[];
+        };
+        Returns: string;
+      };
+      save_match_review: { Args: { p_match_id: string; p_notes: Json }; Returns: number };
+      set_attendance: { Args: { p_match_id: string; p_rows: Json }; Returns: number };
     };
     Enums: {
       [_ in never]: never;
