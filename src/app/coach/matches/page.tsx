@@ -36,7 +36,7 @@ export default async function MatchesPage() {
 
       <ul className="mt-6 space-y-2">
         {matches.map((m) => {
-          const result = resultOf(m.our_score, m.their_score);
+          const result = resultOf(m.our_score, m.their_score, Number(m.players_played ?? 0));
           const missing = Number(m.events_missing ?? 0);
           const noRoster = Number(m.players_played ?? 0) === 0;
           return (

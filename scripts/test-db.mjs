@@ -320,4 +320,89 @@ await as("authenticated", STRANGER, async () => {
   ok("감독이 아니면 지난 명단도 안 보인다");
 });
 
+// --- 6. 3주차: MVP, 공유 링크 ------------------------------------------------
+console.log("MVP · 공유 링크 (3주차)");
+const share = await as("authenticated", COACH, async () => {
+  const P = ids.players;
+  // MVP는 출전 선수만, 메모 저장과 한 번에
+  const notes = JSON.stringify([
+    { kind: "good", body: "빌드업 2골", visibility: "team" },
+    { kind: "improve", body: "감독만 보는 개선점", visibility: "coach" },
+    { kind: "next_focus", body: "킥인 약속", visibility: "team" },
+    { kind: "next_focus", body: "감독만 포인트", visibility: "coach" },
+  ]);
+  await q(`select save_match_review($1, $2::jsonb, $3)`, [m2.match, notes, P.D]);
+  let [mm] = await q(`select mvp_player_id from matches where id = $1`, [m2.match]);
+  assert.equal(mm.mvp_player_id, P.D);
+  ok("메모 저장과 MVP를 한 번에 저장");
+  await rejects(q(`update matches set mvp_player_id = $2 where id = $1`, [m2.match, P.G]), /출전한 선수만/, "출전하지 않은 선수는 MVP가 될 수 없다");
+
+  // 출석에서 MVP를 벤치로 돌리면 MVP가 비워진다 (D는 골 기록이 있어서 못 빼므로 E로 확인)
+  await q(`select save_match_review($1, $2::jsonb, $3)`, [m2.match, notes, P.E]);
+  const rows = (o) => JSON.stringify(Object.entries(o).map(([n, status]) => ({ player_id: P[n], status })));
+  await q(`select set_attendance($1, $2::jsonb)`, [m2.match, rows({ GK: "played", A: "played", B: "played", C: "played", D: "played", E: "played" })]);
+  [mm] = await q(`select mvp_player_id from matches where id = $1`, [m2.match]);
+  assert.equal(mm.mvp_player_id, P.E);
+  ok("출석을 다시 저장해도 계속 출전이면 MVP 유지");
+  // E는 m2에서 코트 위 기록이 있어 출전에서 못 빼므로, 직접 출석 행을 지워 트리거를 확인
+  await q(`delete from goal_event_on_court where player_id = $1 and event_id in (select id from goal_events where match_id = $2)`, [P.E, m2.match]);
+  await q(`update match_attendance set status = 'bench' where match_id = $1 and player_id = $2`, [m2.match, P.E]);
+  [mm] = await q(`select mvp_player_id from matches where id = $1`, [m2.match]);
+  assert.equal(mm.mvp_player_id, null);
+  ok("MVP가 출전에서 빠지면 MVP가 비워진다");
+  await q(`select save_match_review($1, $2::jsonb, $3)`, [m2.match, notes, P.D]);
+
+  // MVP가 있는 경기도 지울 수 있다 (연쇄 삭제 중 트리거가 막지 않는다)
+  const [tmp] = await q(`insert into matches (season_id, played_on, opponent, our_score, their_score) values ($1, '2026-12-01', '삭제용', 1, 0) returning id`, [ids.season]);
+  await q(`select set_attendance($1, $2::jsonb)`, [tmp.id, rows({ A: "played" })]);
+  await q(`update matches set mvp_player_id = $2 where id = $1`, [tmp.id, P.A]);
+  await q(`delete from matches where id = $1`, [tmp.id]);
+  ok("MVP가 있는 경기 삭제");
+
+  const [link] = await q(`insert into share_links (label) values ('우리팀') returning token`);
+  const [dead] = await q(`insert into share_links (label, revoked_at) values ('끊은 링크', now()) returning token`);
+  return { token: link.token, dead: dead.token };
+});
+
+await as("anon", null, async () => {
+  const P = ids.players;
+  await rejects(q(`select * from share_links`), /permission denied/, "anon은 공유 링크 테이블을 못 읽는다");
+  await rejects(q(`select share_token_ok($1)`, [share.token]), /permission denied/, "anon은 토큰 검사 함수를 직접 못 부른다");
+
+  const [{ o }] = await q(`select shared_overview($1) as o`, [share.token]);
+  assert.equal(o.label, "우리팀");
+  assert.equal(o.latest_match_id, m2.match);
+  assert.deepEqual(o.next_focus, ["킥인 약속"]);
+  assert.equal(o.matches.length, 2);
+  assert.equal(o.matches[0].mvp_name, "D");
+  assert.ok(o.players.every((p) => p.name !== "G"), "용병은 선수 목록에 없다");
+  assert.equal(JSON.stringify(o).includes("감독만"), false);
+  ok("공유 첫 화면: 경기 목록·MVP·'팀 공개' 포인트만");
+
+  const [{ m }] = await q(`select shared_match($1, $2) as m`, [share.token, m2.match]);
+  assert.equal(m.mvp.name, "D");
+  assert.deepEqual(m.notes.map((n) => `${n.kind}:${n.body}`), ["good:빌드업 2골", "next_focus:킥인 약속"]);
+  assert.equal(JSON.stringify(m).includes("개인 코멘트"), false);
+  const against = m.goals.filter((g) => g.side === "against");
+  assert.ok(against.length > 0 && against.every((g) => g.tags.length === 0));
+  assert.ok(m.goals.find((g) => g.side === "for" && g.scorer === "D").tags.length > 0);
+  ok("공유 경기 리뷰: 감독만 메모·선수 코멘트·실점 원인은 안 나간다");
+
+  const [{ p }] = await q(`select shared_player($1, $2) as p`, [share.token, P.D]);
+  assert.equal(p.name, "D");
+  assert.equal(p.matches.length, 2);
+  assert.equal(p.matches[1].mvp, true);
+  assert.equal(JSON.stringify(p).includes("against"), false);
+  assert.equal(JSON.stringify(p).includes("coach_note"), false);
+  ok("공유 선수 기록: 본인 경기별 골·어시스트·MVP, 실점·감독 메모 없음");
+
+  for (const bad of [share.dead, "short", "x".repeat(64), null]) {
+    const [{ o: none }] = await q(`select shared_overview($1) as o`, [bad]);
+    assert.equal(none, null);
+  }
+  const [{ m: none2 }] = await q(`select shared_match($1, $2) as m`, [share.dead, m2.match]);
+  assert.equal(none2, null);
+  ok("끊은 링크·틀린 토큰은 아무것도 안 보인다");
+});
+
 console.log("\nall DB tests passed");

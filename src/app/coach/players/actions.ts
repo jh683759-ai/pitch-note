@@ -29,8 +29,8 @@ export async function updatePlayer(id: string, _prev: FormState, form: FormData)
   const { error } = await supabase.from("players").update(parsed.value).eq("id", id);
   if (error) return { error: friendlyDbError(error) };
 
-  revalidatePath("/coach/players");
-  redirect("/coach/players");
+  revalidatePath("/coach/players", "layout");
+  redirect(`/coach/players/${id}`);
 }
 
 export async function setPlayerActive(id: string, active: boolean, _prev: FormState): Promise<FormState> {

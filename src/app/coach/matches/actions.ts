@@ -181,7 +181,7 @@ export async function deleteGoalEvent(matchId: string, eventId: string): Promise
 // ---------------------------------------------------------------------------
 export type ReviewNoteInput = { kind: ReviewKind; body: string; visibility: Visibility };
 
-export async function saveReview(matchId: string, notes: ReviewNoteInput[]): Promise<ActionResult> {
+export async function saveReview(matchId: string, notes: ReviewNoteInput[], mvpPlayerId: string | null): Promise<ActionResult> {
   const filled = notes.filter((n) => n.body.trim());
   if (filled.filter((n) => n.kind === "next_focus").length > MAX_NEXT_FOCUS) {
     return { error: `다음 경기 포인트는 ${MAX_NEXT_FOCUS}개까지예요.` };
@@ -189,7 +189,11 @@ export async function saveReview(matchId: string, notes: ReviewNoteInput[]): Pro
   if (filled.some((n) => n.body.trim().length > 1000)) return { error: "메모 한 칸은 1000자 이내로 입력하세요." };
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("save_match_review", { p_match_id: matchId, p_notes: filled });
+  const { error } = await supabase.rpc("save_match_review", {
+    p_match_id: matchId,
+    p_notes: filled,
+    p_mvp_player_id: mvpPlayerId,
+  });
   if (error) return { error: friendlyMatchError(error) };
 
   refresh(matchId);

@@ -36,7 +36,7 @@ export default async function CoachLayout({ children }: { children: React.ReactN
       <header className="sticky top-0 z-10 border-b border-line bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-xl items-center justify-between px-4">
           <div className="flex items-center gap-4">
-            <Link href="/coach/matches" className="font-bold text-pitch">
+            <Link href="/coach" className="font-bold text-pitch">
               pitch-note
             </Link>
             <CoachNav />

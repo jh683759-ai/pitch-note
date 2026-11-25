@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
+  { href: "/coach", label: "홈" },
   { href: "/coach/matches", label: "경기" },
   { href: "/coach/players", label: "선수" },
 ];
@@ -13,7 +14,7 @@ export function CoachNav() {
   return (
     <nav className="flex gap-1 text-sm">
       {TABS.map((t) => {
-        const active = pathname.startsWith(t.href);
+        const active = t.href === "/coach" ? pathname === "/coach" : pathname.startsWith(t.href);
         return (
           <Link
             key={t.href}

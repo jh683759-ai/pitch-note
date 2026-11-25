@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { deletePlayer, setPlayerActive, type FormState } from "../actions";
+import { deletePlayer, setPlayerActive, type FormState } from "../../actions";
 
 export function DangerZone({ id, isActive, hasRecords }: { id: string; isActive: boolean; hasRecords: boolean }) {
   const [archiveState, archive, archiving] = useActionState<FormState>(setPlayerActive.bind(null, id, !isActive), {

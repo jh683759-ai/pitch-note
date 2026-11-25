@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import type { ReviewKind, Visibility } from "@/lib/matches";
 import { saveReview } from "../../actions";
-import { ErrorBox, StickyActions } from "../../ui";
+import { ErrorBox, Jersey, StickyActions, TapChip } from "../../ui";
 
 export type NoteDraft = { body: string; visibility: Visibility };
 
@@ -12,12 +12,17 @@ export function NotesForm({
   good: initialGood,
   improve: initialImprove,
   focus: initialFocus,
+  mvp: initialMvp,
+  played,
 }: {
   matchId: string;
   good: NoteDraft;
   improve: NoteDraft;
   focus: NoteDraft[];
+  mvp: string | null;
+  played: { id: string; name: string; jersey: number | null }[];
 }) {
+  const [mvp, setMvp] = useState(initialMvp);
   const [good, setGood] = useState(initialGood);
   const [improve, setImprove] = useState(initialImprove);
   const [focus, setFocus] = useState(initialFocus);
@@ -33,7 +38,7 @@ export function NotesForm({
         { kind: "improve", ...improve },
         ...focus.map((f) => ({ kind: "next_focus" as const, ...f })),
       ];
-      const res = await saveReview(matchId, notes);
+      const res = await saveReview(matchId, notes, mvp);
       setError(res.error);
     });
 
@@ -61,6 +66,23 @@ export function NotesForm({
           ))}
         </div>
       </fieldset>
+
+      {played.length > 0 && (
+        <fieldset>
+          <legend className="mb-1 text-sm font-semibold">
+            오늘의 MVP <span className="font-normal text-muted">(선택)</span>
+          </legend>
+          <p className="mb-2 text-xs text-muted">골이 아니어도 돼요. 공유 링크와 카톡 미리보기에 이름이 나가요.</p>
+          <div className="grid grid-cols-3 gap-2">
+            {played.map((p) => (
+              <TapChip key={p.id} selected={mvp === p.id} onClick={() => setMvp(mvp === p.id ? null : p.id)}>
+                <span className="block truncate">{p.name}</span>
+                <Jersey n={p.jersey} />
+              </TapChip>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       <p className="text-xs text-muted">
         &lsquo;팀 공개&rsquo;로 둔 메모만 선수용 공유 링크에 보여요. 처음에는 모두 &lsquo;감독만&rsquo;이에요.
