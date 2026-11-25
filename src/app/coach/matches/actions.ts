@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getRole } from "@/lib/role";
 import {
   friendlyMatchError,
   MAX_NEXT_FOCUS,
@@ -67,7 +68,11 @@ export async function updateMatch(id: string, _prev: ActionResult, form: FormDat
   redirect(`/coach/matches/${id}`);
 }
 
+const COACH_ONLY_DELETE = "기록 삭제는 감독만 할 수 있어요. 감독에게 부탁하세요.";
+
 export async function deleteMatch(id: string): Promise<ActionResult> {
+  // DB(RLS)도 막지만, 기록원은 0건 삭제가 '성공'처럼 보이지 않게 먼저 알려준다.
+  if ((await getRole()) !== "coach") return { error: COACH_ONLY_DELETE };
   const supabase = await createClient();
   // 출석·골/실점·메모는 cascade로 같이 지워진다. 화면에서 한 번 더 확인받는다.
   const { error } = await supabase.from("matches").delete().eq("id", id);
@@ -169,6 +174,7 @@ export async function saveGoalEvent(
 }
 
 export async function deleteGoalEvent(matchId: string, eventId: string): Promise<ActionResult> {
+  if ((await getRole()) !== "coach") return { error: COACH_ONLY_DELETE };
   const supabase = await createClient();
   const { error } = await supabase.from("goal_events").delete().eq("id", eventId).eq("match_id", matchId);
   if (error) return { error: friendlyMatchError(error) };

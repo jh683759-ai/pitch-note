@@ -6,14 +6,15 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/coach", label: "홈" },
   { href: "/coach/matches", label: "경기" },
-  { href: "/coach/players", label: "선수" },
+  { href: "/coach/players", label: "선수", coachOnly: true },
 ];
 
-export function CoachNav() {
+/** 기록원은 선수 명단 관리 탭이 없다 */
+export function CoachNav({ isCoach }: { isCoach: boolean }) {
   const pathname = usePathname();
   return (
     <nav className="flex gap-1 text-sm">
-      {TABS.map((t) => {
+      {TABS.filter((t) => isCoach || !t.coachOnly).map((t) => {
         const active = t.href === "/coach" ? pathname === "/coach" : pathname.startsWith(t.href);
         return (
           <Link

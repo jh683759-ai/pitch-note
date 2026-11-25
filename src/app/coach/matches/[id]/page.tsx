@@ -6,12 +6,14 @@ import { ScoreEditor } from "./score-editor";
 import { createClient } from "@/lib/supabase/server";
 import { sharePath, siteUrl } from "@/lib/site";
 import { CopyButton } from "../../share/share-controls";
+import { getRole, staffNames } from "@/lib/role";
 
 export const metadata = { title: "경기 · pitch-note" };
 
 export default async function MatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { match, roster, events, tags, notes } = await loadMatch(id);
+  const [{ match, roster, events, tags, notes }, role, staff] = await Promise.all([loadMatch(id), getRole(), staffNames()]);
+  const isCoach = role === "coach";
   const supabase = await createClient();
   const { data: link } = await supabase
     .from("share_links")
@@ -36,7 +38,11 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
   const focus = notes.filter((n) => n.kind === "next_focus");
 
   // 지금 해야 할 단계 하나만 강조한다
-  const step = played.length === 0 ? 1 : missingFor + missingAgainst > 0 ? 2 : review.length + focus.length === 0 ? 3 : 0;
+  // 기록원은 3단계(메모)가 없다. 메모·MVP는 감독이 쓴다.
+  const step =
+    played.length === 0 ? 1 : missingFor + missingAgainst > 0 ? 2 : isCoach && review.length + focus.length === 0 ? 3 : 0;
+  const createdBy = match.created_by ? staff.get(match.created_by) : null;
+  const updatedBy = match.updated_by ? staff.get(match.updated_by) : null;
   const result = resultOf(match.our_score, match.their_score, played.length);
 
   return (
@@ -49,6 +55,12 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
             {formatMatchDate(match.played_on)} · {matchTypeLabel(match.match_type)}
             {match.venue ? ` · ${match.venue}` : ""}
           </p>
+          {(createdBy || updatedBy) && (
+            <p className="mt-0.5 text-xs text-muted">
+              {createdBy ? `기록 ${createdBy}` : ""}
+              {updatedBy && updatedBy !== createdBy ? `${createdBy ? " · " : ""}마지막 수정 ${updatedBy}` : ""}
+            </p>
+          )}
         </div>
         <Link href={`/coach/matches/${id}/edit`} className="shrink-0 py-1 text-sm text-muted">
           수정
@@ -60,7 +72,9 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       {step === 0 && (
         <div className="mt-4 rounded-xl bg-pitch-soft px-4 py-3">
           <p className="text-sm font-medium text-pitch">기록 완료. 수고하셨어요!</p>
-          {shareUrl ? (
+          {!isCoach ? (
+            <p className="mt-1 text-xs text-muted">메모와 MVP는 감독이 정리해서 선수들에게 공유해요.</p>
+          ) : shareUrl ? (
             <div className="mt-2 flex items-center gap-2">
               <CopyButton text={shareUrl} label="단톡방용 리뷰 링크 복사" className="btn-primary min-h-10 flex-1 text-sm" />
               <a href={shareUrl} target="_blank" rel="noreferrer" className="btn-ghost min-h-10 px-3 text-sm">
@@ -76,7 +90,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
               를 먼저 만드세요.
             </p>
           )}
-          <p className="mt-2 text-xs text-muted">선수 화면에는 &lsquo;팀 공개&rsquo; 메모와 MVP만 보여요.</p>
+          {isCoach && <p className="mt-2 text-xs text-muted">선수 화면에는 &lsquo;팀 공개&rsquo; 메모와 MVP만 보여요.</p>}
         </div>
       )}
 
@@ -124,7 +138,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
         n={3}
         title="메모 · 다음 경기 포인트"
         active={step === 3}
-        href={`/coach/matches/${id}/notes`}
+        href={isCoach ? `/coach/matches/${id}/notes` : undefined}
         cta={review.length + focus.length ? "고치기" : "쓰기"}
       >
         {match.mvp_player_id && (
@@ -133,7 +147,9 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
             {names.get(match.mvp_player_id) ?? "?"}
           </p>
         )}
-        {review.length + focus.length === 0 ? (
+        {!isCoach && review.length + focus.length === 0 ? (
+          <p className="text-sm text-muted">메모와 MVP는 감독이 써요.</p>
+        ) : review.length + focus.length === 0 ? (
           <p className="text-sm text-muted">잘된 점 한 줄, 개선점 한 줄, 다음 경기 포인트 1~3개면 충분해요.</p>
         ) : (
           <ul className="space-y-1.5 text-sm">
