@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f7f5;
+  --foreground: #1b1f1d;
+  --muted: #6b726e;
+  --card: #ffffff;
+  --line: #e2e5e1;
+  --pitch: #0f5132;
+  --pitch-soft: #e6f2ec;
+  --danger: #b42318;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #111412;
+    --foreground: #e8ebe9;
+    --muted: #9aa39e;
+    --card: #1a1e1c;
+    --line: #2b312e;
+    --pitch: #5fc08f;
+    --pitch-soft: #1d2b24;
+    --danger: #f97066;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-card: var(--card);
+  --color-line: var(--line);
+  --color-pitch: var(--pitch);
+  --color-pitch-soft: var(--pitch-soft);
+  --color-danger: var(--danger);
+  --font-sans: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 모바일에서 경기 직후 엄지로 입력: 큰 터치 영역(최소 48px) */
+@layer components {
+  .input {
+    @apply block w-full rounded-xl border border-line bg-card px-4 py-3 text-base outline-none focus:border-pitch focus:ring-2 focus:ring-pitch/30;
+  }
+  .btn-primary {
+    @apply inline-flex min-h-12 items-center justify-center rounded-xl bg-pitch px-5 font-semibold text-white disabled:opacity-60 dark:text-black;
+  }
+  .btn-ghost {
+    @apply inline-flex min-h-12 items-center justify-center rounded-xl border border-line bg-card px-5 font-medium disabled:opacity-60;
+  }
+  .card {
+    @apply rounded-2xl border border-line bg-card;
+  }
+}
