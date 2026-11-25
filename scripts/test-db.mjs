@@ -168,4 +168,156 @@ await as("authenticated", COACH, async () => {
   ok("태그 집계");
 });
 
+// --- 4. 2주차: 경기 입력 함수 -------------------------------------------------
+console.log("경기 입력 함수 (2주차)");
+const m2 = await as("authenticated", COACH, async () => {
+  const P = ids.players;
+  const rpc = (fn, args) => q(`select * from ${fn}`, args);
+
+  // 시즌 자동 선택/생성
+  const [{ ensure_season_for: s2026 }] = await q(`select ensure_season_for('2026-12-06')`);
+  assert.equal(s2026, ids.season);
+  const [{ ensure_season_for: s2027 }] = await q(`select ensure_season_for('2027-01-10')`);
+  const [s27] = await q(`select name from seasons where id = $1`, [s2027]);
+  assert.equal(s27.name, "2027 시즌");
+  const [{ ensure_season_for: again }] = await q(`select ensure_season_for('2027-03-01')`);
+  assert.equal(again, s2027);
+  ok("경기 날짜로 시즌을 찾고, 없으면 그 해 시즌을 만든다");
+
+  const [m] = await q(`insert into matches (season_id, played_on, opponent, our_score, their_score)
+    values ($1, '2026-12-06', '장년부', 0, 0) returning id`, [ids.season]);
+
+  // 지난 명단 복사: 직전 경기의 출석 (보관 선수 제외)
+  await q(`update players set is_active = false where id = $1`, [P.C]);
+  const prev = await rpc(`previous_attendance($1)`, [m.id]);
+  const prevMap = Object.fromEntries(prev.map((r) => [r.player_id, r.status]));
+  assert.equal(prev.length, 6); // 7명 중 보관한 C 제외
+  assert.equal(prevMap[P.E], "absent");
+  assert.equal(prevMap[P.C], undefined);
+  assert.equal(prev[0].source_opponent, "청년부B");
+  ok("지난 경기 명단 복사: 직전 경기 출석, 보관 선수는 빠짐");
+  await q(`update players set is_active = true where id = $1`, [P.C]);
+  assert.equal((await rpc(`previous_attendance($1)`, [ids.match])).length, 0);
+  ok("첫 경기는 복사할 명단이 없다");
+
+  // 출석 저장 (전체 교체)
+  const rows = (o) => JSON.stringify(Object.entries(o).map(([n, status]) => ({ player_id: P[n], status })));
+  await q(`select set_attendance($1, $2::jsonb)`, [m.id, rows({ GK: "played", A: "played", B: "played", C: "played", D: "played", E: "bench", G: "absent" })]);
+  await q(`select set_attendance($1, $2::jsonb)`, [m.id, rows({ GK: "played", A: "played", B: "played", C: "played", D: "played", E: "played" })]);
+  const att = await q(`select player_id, status, membership from match_attendance where match_id = $1`, [m.id]);
+  assert.equal(att.length, 6);
+  assert.ok(att.every((a) => a.status === "played"));
+  ok("출석 저장은 전체 교체 (목록에서 빠진 용병은 명단에서 제외)");
+
+  // 골 이벤트: 한 번에 저장 + 스코어 자동 증가
+  const tagId = async (kind, code) => (await q(`select id from event_tags where kind=$1 and code=$2`, [kind, code]))[0].id;
+  const save = (o) => q(`select save_goal_event(
+      p_match_id => $1, p_side => $2, p_scorer_id => $3, p_assist_id => $4, p_is_own_goal => $5,
+      p_goalkeeper_id => $6, p_tag_ids => $7::smallint[], p_on_court => $8::uuid[], p_note => $9, p_event_id => $10) as id`,
+    [m.id, o.side, o.scorer ?? null, o.assist ?? null, o.own ?? false, o.gk ?? P.GK, o.tags ?? [], o.court ?? [], o.note ?? null, o.id ?? null])
+    .then((r) => r[0].id);
+  const court = [P.A, P.B, P.C, P.D];
+  const g1 = await save({ side: "for", scorer: P.D, assist: P.B, tags: [await tagId("goal_type", "build_up")], court });
+  const g2 = await save({ side: "for", scorer: P.B, tags: [await tagId("goal_type", "counter")], court: [P.A, P.B, P.E, P.D] });
+  const c1 = await save({ side: "against", tags: [await tagId("concede_cause", "lost_marking")], court });
+  const evs = await q(`select id, seq from goal_events where match_id = $1 order by seq`, [m.id]);
+  assert.deepEqual(evs.map((e) => e.seq), [1, 2, 3]);
+  let [score] = await q(`select our_score, their_score from matches where id = $1`, [m.id]);
+  assert.deepEqual([score.our_score, score.their_score], [2, 1]);
+  ok("골·실점 저장: 순서 자동, 태그·코트 위 4명 한 번에, 스코어 자동 증가");
+
+  // 고치기: 태그·코트 위 명단 교체
+  await save({ id: g1, side: "for", scorer: P.D, assist: P.A, tags: [await tagId("goal_type", "counter"), await tagId("goal_type", "solo")], court });
+  const g1tags = await q(`select t.code from goal_event_tags gt join event_tags t on t.id = gt.tag_id where event_id = $1 order by code`, [g1]);
+  assert.deepEqual(g1tags.map((t) => t.code), ["counter", "solo"]);
+  const [g1row] = await q(`select assist_id, seq from goal_events where id = $1`, [g1]);
+  assert.equal(g1row.assist_id, P.A);
+  assert.equal(g1row.seq, 1);
+  ok("기록 고치기: 순서는 유지, 태그는 교체");
+
+  // 실패하면 반쪽 기록이 남지 않는다 (트랜잭션)
+  const before = (await q(`select count(*)::int as n from goal_events where match_id = $1`, [m.id]))[0].n;
+  await rejects(save({ side: "for", scorer: P.D, court: [P.A, P.B, P.C, P.D, P.E] }), /최대 4명/, "코트 위 5명이면 저장 거부");
+  await rejects(save({ side: "against", tags: [await tagId("goal_type", "solo")], court }), /태그 종류/, "실점에 득점 유형 태그면 저장 거부");
+  const after = (await q(`select count(*)::int as n from goal_events where match_id = $1`, [m.id]))[0].n;
+  assert.equal(after, before);
+  ok("저장이 실패하면 이벤트도 남지 않는다 (한 트랜잭션)");
+  await rejects(save({ id: ids.match, side: "for" }), /찾을 수 없어요/, "다른 경기의 기록 id로는 고칠 수 없다");
+
+  // 기록에 있는 선수는 출전에서 못 뺀다
+  await rejects(q(`select set_attendance($1, $2::jsonb)`, [m.id, rows({ GK: "played", A: "played", B: "played", C: "played", D: "bench", E: "played" })]),
+    /출전에서 뺄 수 없어요: D/, "골 기록에 있는 선수는 출전에서 뺄 수 없다");
+
+  // 스코어는 기록보다 크게 직접 둘 수 있다 (다 못 적은 골)
+  await q(`update matches set our_score = 4 where id = $1`, [m.id]);
+  await save({ side: "for", scorer: P.E, court: [P.A, P.E, P.C, P.D] });
+  [score] = await q(`select our_score from matches where id = $1`, [m.id]);
+  assert.equal(score.our_score, 4);
+  ok("감독이 적은 스코어가 기록 수보다 크면 그대로 둔다");
+
+  // 경기 메모 (전체 교체, 다음 경기 포인트 3개 제한 유지)
+  const notes = (arr) => JSON.stringify(arr.map(([kind, body, visibility]) => ({ kind, body, visibility })));
+  await q(`select save_match_review($1, $2::jsonb)`, [m.id, notes([["good", "빌드업 2골", "team"], ["improve", "세컨볼", "coach"], ["next_focus", "킥인 약속", "team"], ["next_focus", "  ", "team"]])]);
+  await q(`insert into match_notes (match_id, kind, player_id, body) values ($1, 'player', $2, '개인 코멘트')`, [m.id, P.A]);
+  await q(`select save_match_review($1, $2::jsonb)`, [m.id, notes([["good", "빌드업 2골", "team"], ["next_focus", "a", "team"], ["next_focus", "b", "coach"]])]);
+  const ns = await q(`select kind, body, visibility from match_notes where match_id = $1 order by kind, sort_order`, [m.id]);
+  assert.deepEqual(ns.map((n) => `${n.kind}:${n.body}:${n.visibility}`), ["good:빌드업 2골:team", "next_focus:a:team", "next_focus:b:coach", "player:개인 코멘트:coach"]);
+  ok("경기 메모 저장: 전체 교체, 빈 줄 무시, 선수 개인 코멘트는 유지");
+  await rejects(q(`select save_match_review($1, $2::jsonb)`, [m.id, notes([["next_focus", "1"], ["next_focus", "2"], ["next_focus", "3"], ["next_focus", "4"]])]), /3개까지/, "메모 저장도 다음 경기 포인트 3개 제한");
+  const [{ n: keep }] = await q(`select count(*)::int as n from match_notes where match_id = $1`, [m.id]);
+  assert.equal(keep, 4);
+  ok("메모 저장이 실패하면 기존 메모가 그대로 남는다");
+
+  return { match: m.id, g1, g2, c1 };
+});
+
+// --- 5. 2주차: 집계 뷰 --------------------------------------------------------
+console.log("집계 뷰 (2주차)");
+await as("authenticated", COACH, async () => {
+  const P = ids.players;
+  const name = Object.fromEntries(Object.entries(P).map(([k, v]) => [v, k]));
+
+  // 1경기: A·B·C·D 코트 위 for 2, against 1 / A·G·C·D for 1
+  // 2경기: A·B·C·D for 1(g1), against 1(c1) / A·B·E·D for 1(g2) / A·E·C·D for 1 (스코어만 4로 올린 골은 기록 없음)
+  const oc = Object.fromEntries((await q(`select * from player_on_court_stats where season_id = $1`, [ids.season])).map((r) => [name[r.player_id], r]));
+  assert.equal(Number(oc.A.on_court_for), 6);
+  assert.equal(Number(oc.A.on_court_against), 2);
+  assert.equal(Number(oc.A.on_court_diff), 4);
+  assert.equal(Number(oc.B.on_court_for), 4);
+  assert.equal(Number(oc.E.on_court_for), 2);
+  assert.equal(oc.GK, undefined); // GK는 필드 4명에 없다
+  ok("선수별 코트 위 득실 (+/-): A +6/-2, GK는 필드 집계에서 빠짐");
+
+  const pairs = await q(`select * from pair_goal_diff where season_id = $1`, [ids.season]);
+  const pair = (x, y) => pairs.find((p) => [p.player_a, p.player_b].sort().join() === [P[x], P[y]].sort().join());
+  assert.equal(Number(pair("A", "D").goals_for), 6);
+  assert.equal(Number(pair("A", "D").goals_against), 2);
+  assert.equal(Number(pair("B", "E").events), 1);
+  assert.ok(pairs.every((p) => p.player_a < p.player_b));
+  ok("두 명 조합 득실: 같은 쌍은 한 줄로 (A·D +6/-2)");
+
+  const log = await q(`select * from player_match_log where player_id = $1 order by played_on`, [P.D]);
+  assert.equal(log.length, 2);
+  assert.deepEqual(log.map((l) => [Number(l.goals), Number(l.assists)]), [[1, 1], [1, 0]]);
+  assert.deepEqual(log.map((l) => [Number(l.on_court_for), Number(l.on_court_against)]), [[3, 1], [3, 1]]);
+  const [gk] = await q(`select conceded_as_gk from player_match_log where player_id = $1 and match_id = $2`, [P.GK, m2.match]);
+  assert.equal(Number(gk.conceded_as_gk), 1);
+  ok("선수 × 경기 기록 (성장 추이용): 경기별 골·어시스트·코트 위 득실·GK 실점");
+
+  const stats = Object.fromEntries((await q(`select * from player_season_stats where season_id = $1`, [ids.season])).map((r) => [r.name, r]));
+  assert.equal(Number(stats.D.goals), 2);
+  assert.equal(Number(stats.E.attendance_rate), 0.5);
+  ok("시즌 통계가 2경기를 합친다 (E 출석률 1/2)");
+});
+
+await as("anon", null, async () => {
+  await rejects(q("select * from player_match_log"), /permission denied/, "anon은 새 집계 뷰도 못 읽는다");
+  await rejects(q(`select save_goal_event($1, 'for')`, [m2.match]), /permission denied/, "anon은 입력 함수를 호출할 수 없다");
+});
+await as("authenticated", STRANGER, async () => {
+  await rejects(q(`select save_goal_event($1, 'for')`, [m2.match]), /row-level security|찾을 수|violates/, "감독이 아니면 입력 함수로도 쓸 수 없다");
+  assert.equal((await q(`select * from previous_attendance($1)`, [m2.match])).length, 0);
+  ok("감독이 아니면 지난 명단도 안 보인다");
+});
+
 console.log("\nall DB tests passed");

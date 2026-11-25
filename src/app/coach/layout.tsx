@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { logout } from "@/app/login/actions";
+import { CoachNav } from "./nav";
 
 export default async function CoachLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -34,11 +35,14 @@ export default async function CoachLayout({ children }: { children: React.ReactN
     <div className="min-h-dvh">
       <header className="sticky top-0 z-10 border-b border-line bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-xl items-center justify-between px-4">
-          <Link href="/coach/players" className="font-bold text-pitch">
-            pitch-note
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link href="/coach/matches" className="font-bold text-pitch">
+              pitch-note
+            </Link>
+            <CoachNav />
+          </div>
           <form action={logout}>
-            <button className="text-sm text-muted">{coach.display_name} · 로그아웃</button>
+            <button className="text-sm text-muted">로그아웃</button>
           </form>
         </div>
       </header>
