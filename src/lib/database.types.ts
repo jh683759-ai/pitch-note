@@ -340,6 +340,7 @@ export type Database = {
           kickoff_time: string | null;
           match_type: string;
           media_url: string | null;
+          mvp_player_id: string | null;
           opponent: string;
           our_score: number | null;
           played_on: string;
@@ -356,6 +357,7 @@ export type Database = {
           kickoff_time?: string | null;
           match_type?: string;
           media_url?: string | null;
+          mvp_player_id?: string | null;
           opponent: string;
           our_score?: number | null;
           played_on: string;
@@ -371,6 +373,7 @@ export type Database = {
           kickoff_time?: string | null;
           match_type?: string;
           media_url?: string | null;
+          mvp_player_id?: string | null;
           opponent?: string;
           our_score?: number | null;
           played_on?: string;
@@ -381,6 +384,13 @@ export type Database = {
           venue?: string | null;
         };
         Relationships: [
+          {
+            foreignKeyName: "matches_mvp_player_id_fkey";
+            columns: ["mvp_player_id"];
+            isOneToOne: false;
+            referencedRelation: "players";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "matches_season_id_fkey";
             columns: ["season_id"];
@@ -709,8 +719,14 @@ export type Database = {
         };
         Returns: string;
       };
-      save_match_review: { Args: { p_match_id: string; p_notes: Json }; Returns: number };
+      save_match_review: {
+        Args: { p_match_id: string; p_notes: Json; p_mvp_player_id?: string | null };
+        Returns: number;
+      };
       set_attendance: { Args: { p_match_id: string; p_rows: Json }; Returns: number };
+      shared_match: { Args: { p_token: string; p_match_id: string }; Returns: Json };
+      shared_overview: { Args: { p_token: string }; Returns: Json };
+      shared_player: { Args: { p_token: string; p_player_id: string }; Returns: Json };
     };
     Enums: {
       [_ in never]: never;

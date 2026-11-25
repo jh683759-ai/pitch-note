@@ -7,7 +7,7 @@ export const metadata = { title: "경기 메모 · pitch-note" };
 
 export default async function NotesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { match, notes } = await loadMatch(id);
+  const { match, notes, roster } = await loadMatch(id);
   const previous = await loadPreviousMatch(match);
 
   const draft = (kind: string): NoteDraft => {
@@ -40,7 +40,14 @@ export default async function NotesPage({ params }: { params: Promise<{ id: stri
         </section>
       )}
 
-      <NotesForm matchId={id} good={draft("good")} improve={draft("improve")} focus={focus} />
+      <NotesForm
+        matchId={id}
+        good={draft("good")}
+        improve={draft("improve")}
+        focus={focus}
+        mvp={match.mvp_player_id}
+        played={roster.filter((r) => r.status === "played").map((r) => ({ id: r.player.id, name: r.player.name, jersey: r.player.jersey_number }))}
+      />
     </main>
   );
 }

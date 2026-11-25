@@ -49,8 +49,13 @@ export function matchTypeLabel(value: string) {
   return MATCH_TYPES.find((t) => t.value === value)?.label ?? value;
 }
 
-export function resultOf(our: number | null, their: number | null) {
+/**
+ * 승/무/패. 막 만든 경기(출석도 골도 없는 0:0)는 아직 결과가 아니므로 null.
+ * 출석을 넣은 뒤의 0:0은 실제 무승부일 수 있어서 "무"로 본다.
+ */
+export function resultOf(our: number | null, their: number | null, playersPlayed = 1) {
   if (our == null || their == null) return null;
+  if (our === 0 && their === 0 && playersPlayed === 0) return null;
   return our > their ? "승" : our < their ? "패" : "무";
 }
 

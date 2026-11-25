@@ -3,14 +3,28 @@ import { formatMatchDate, matchTypeLabel, resultOf } from "@/lib/matches";
 import { loadMatch, nameMap, type EventWithDetails } from "../load";
 import { BackLink } from "../ui";
 import { ScoreEditor } from "./score-editor";
+import { createClient } from "@/lib/supabase/server";
+import { sharePath, siteUrl } from "@/lib/site";
+import { CopyButton } from "../../share/share-controls";
 
 export const metadata = { title: "경기 · pitch-note" };
 
 export default async function MatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { match, roster, events, tags, notes } = await loadMatch(id);
+  const supabase = await createClient();
+  const { data: link } = await supabase
+    .from("share_links")
+    .select("token")
+    .is("revoked_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const shareUrl = link ? `${await siteUrl()}${sharePath(link.token, { match: id })}` : null;
 
   const names = nameMap(roster.map((r) => r.player));
+  // 코트 위 4명은 누른 순서가 아니라 명단 순서(등번호)로 보여줘야 골마다 비교하기 쉽다
+  const rosterOrder = new Map(roster.map((r, i) => [r.player.id, i]));
   const tagLabel = new Map(tags.map((t) => [t.id, t.label]));
   const played = roster.filter((r) => r.status === "played");
   const guests = played.filter((r) => r.membership === "guest").length;
@@ -23,7 +37,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
 
   // 지금 해야 할 단계 하나만 강조한다
   const step = played.length === 0 ? 1 : missingFor + missingAgainst > 0 ? 2 : review.length + focus.length === 0 ? 3 : 0;
-  const result = resultOf(match.our_score, match.their_score);
+  const result = resultOf(match.our_score, match.their_score, played.length);
 
   return (
     <main className="pt-6 pb-10">
@@ -44,7 +58,26 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       <ScoreEditor matchId={id} our={match.our_score ?? 0} their={match.their_score ?? 0} result={result} />
 
       {step === 0 && (
-        <p className="mt-4 rounded-xl bg-pitch-soft px-4 py-3 text-sm font-medium text-pitch">기록 완료. 수고하셨어요!</p>
+        <div className="mt-4 rounded-xl bg-pitch-soft px-4 py-3">
+          <p className="text-sm font-medium text-pitch">기록 완료. 수고하셨어요!</p>
+          {shareUrl ? (
+            <div className="mt-2 flex items-center gap-2">
+              <CopyButton text={shareUrl} label="단톡방용 리뷰 링크 복사" className="btn-primary min-h-10 flex-1 text-sm" />
+              <a href={shareUrl} target="_blank" rel="noreferrer" className="btn-ghost min-h-10 px-3 text-sm">
+                미리보기
+              </a>
+            </div>
+          ) : (
+            <p className="mt-1 text-xs text-muted">
+              선수들과 나누려면{" "}
+              <Link href="/coach" className="underline">
+                홈에서 공유 링크
+              </Link>
+              를 먼저 만드세요.
+            </p>
+          )}
+          <p className="mt-2 text-xs text-muted">선수 화면에는 &lsquo;팀 공개&rsquo; 메모와 MVP만 보여요.</p>
+        </div>
       )}
 
       {/* 1. 출석 */}
@@ -80,7 +113,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
         {events.length > 0 && (
           <ol className="mt-3 divide-y divide-line">
             {events.map((e) => (
-              <EventRow key={e.id} e={e} matchId={id} names={names} tagLabel={tagLabel} />
+              <EventRow key={e.id} e={e} matchId={id} names={names} order={rosterOrder} tagLabel={tagLabel} />
             ))}
           </ol>
         )}
@@ -94,6 +127,12 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
         href={`/coach/matches/${id}/notes`}
         cta={review.length + focus.length ? "고치기" : "쓰기"}
       >
+        {match.mvp_player_id && (
+          <p className="mb-2 text-sm">
+            <span className="mr-2 rounded-full bg-pitch-soft px-2 py-0.5 text-xs font-semibold text-pitch">MVP</span>
+            {names.get(match.mvp_player_id) ?? "?"}
+          </p>
+        )}
         {review.length + focus.length === 0 ? (
           <p className="text-sm text-muted">잘된 점 한 줄, 개선점 한 줄, 다음 경기 포인트 1~3개면 충분해요.</p>
         ) : (
@@ -160,11 +199,13 @@ function EventRow({
   e,
   matchId,
   names,
+  order,
   tagLabel,
 }: {
   e: EventWithDetails;
   matchId: string;
   names: Map<string, string>;
+  order: Map<string, number>;
   tagLabel: Map<number, string>;
 }) {
   const n = (id: string | null) => (id ? (names.get(id) ?? "?") : null);
@@ -193,7 +234,10 @@ function EventRow({
             {tagsText && <span className="font-normal text-muted"> · {tagsText}</span>}
           </span>
           <span className="block truncate text-xs text-muted">
-            {e.onCourt.length ? e.onCourt.map((id) => n(id)).join(" ") : "코트 위 미입력"}
+            {e.onCourt.length ? [...e.onCourt]
+                  .sort((a, b) => (order.get(a) ?? 99) - (order.get(b) ?? 99))
+                  .map((id) => n(id))
+                  .join(" ") : "코트 위 미입력"}
             {e.onCourt.length > 0 && e.onCourt.length < 4 ? ` (${e.onCourt.length}/4)` : ""}
             {e.goalkeeper_id ? ` · GK ${n(e.goalkeeper_id)}` : ""}
           </span>
