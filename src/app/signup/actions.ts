@@ -7,11 +7,12 @@ import { MIN_PASSWORD } from "./rules";
 
 export type SignupState = { error: string | null; sentTo?: string };
 
-/** 기록원 신청 = 가입. 가입하면 '승인 대기'가 되고, 감독이 승인해야 기록할 수 있다. */
+/** 가입 = 선수 또는 기록원 신청. 가입하면 '승인 대기'가 되고, 감독이 승인해야 쓸 수 있다. */
 export async function signup(_prev: SignupState, form: FormData): Promise<SignupState> {
   const name = String(form.get("display_name") ?? "").trim();
   const email = String(form.get("email") ?? "").trim();
   const password = String(form.get("password") ?? "");
+  const wants = form.get("wants") === "recorder" ? "recorder" : "player";
   if (!name || name.length > 20) return { error: "이름을 1~20자로 입력하세요." };
   if (!email) return { error: "이메일을 입력하세요." };
   if (password.length < MIN_PASSWORD) return { error: `비밀번호는 ${MIN_PASSWORD}자 이상으로 정하세요.` };
@@ -22,7 +23,7 @@ export async function signup(_prev: SignupState, form: FormData): Promise<Signup
     password,
     options: {
       // DB 트리거가 이 표시를 보고 '승인 대기' 목록에 올린다
-      data: { signup: "pitch-note", display_name: name },
+      data: { signup: "pitch-note", display_name: name, wants },
       emailRedirectTo: `${await siteUrl()}/auth/callback`,
     },
   });

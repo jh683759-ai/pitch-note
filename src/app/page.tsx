@@ -14,7 +14,7 @@ export default function Home() {
         다음 할 일만 보여줍니다.
       </p>
       <Link href="/login" className="btn-primary mt-8">
-        감독 로그인
+        팀 로그인
       </Link>
     </main>
   );

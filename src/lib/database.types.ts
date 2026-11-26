@@ -418,9 +418,11 @@ export type Database = {
           approved_by: string | null;
           display_name: string;
           email: string | null;
+          player_id: string | null;
           requested_at: string;
           status: string;
           user_id: string;
+          wants: string;
         };
         ComputedFields: never;
         Insert: {
@@ -428,18 +430,56 @@ export type Database = {
           approved_by?: string | null;
           display_name: string;
           email?: string | null;
+          player_id?: string | null;
           requested_at?: string;
           status?: string;
           user_id: string;
+          wants?: string;
         };
         Update: {
           approved_at?: string | null;
           approved_by?: string | null;
           display_name?: string;
           email?: string | null;
+          player_id?: string | null;
           requested_at?: string;
           status?: string;
           user_id?: string;
+          wants?: string;
+        };
+        Relationships: [];
+      };
+      player_notes: {
+        Row: {
+          body: string;
+          created_at: string;
+          id: string;
+          kind: string;
+          match_id: string;
+          player_id: string;
+          sort_order: number;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          body: string;
+          created_at?: string;
+          id?: string;
+          kind: string;
+          match_id: string;
+          player_id: string;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Update: {
+          body?: string;
+          created_at?: string;
+          id?: string;
+          kind?: string;
+          match_id?: string;
+          player_id?: string;
+          sort_order?: number;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -739,6 +779,10 @@ export type Database = {
       is_coach: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_recorder: { Args: Record<PropertyKey, never>; Returns: boolean };
       my_role: { Args: Record<PropertyKey, never>; Returns: string };
+      my_player_id: { Args: Record<PropertyKey, never>; Returns: string };
+      my_page: { Args: Record<PropertyKey, never>; Returns: Json };
+      my_match: { Args: { p_match_id: string }; Returns: Json };
+      save_my_notes: { Args: { p_match_id: string; p_notes: Json }; Returns: number };
       staff_names: { Args: Record<PropertyKey, never>; Returns: { display_name: string; user_id: string }[] };
       previous_attendance: {
         Args: { p_match_id: string };

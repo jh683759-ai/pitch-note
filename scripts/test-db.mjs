@@ -518,4 +518,110 @@ await as("authenticated", REC, async () => {
 });
 await as("anon", null, () => rejects(q(`select * from members`), /permission denied/, "anon은 신청 목록을 못 본다"));
 
+// --- 8. 선수 계정 (가입 신청 → 감독이 명단 선수와 연결) ----------------------
+console.log("선수 계정");
+const PL = "00000000-0000-0000-0000-0000000000d1";
+const PL2 = "00000000-0000-0000-0000-0000000000d2";
+await db.exec(`
+  insert into auth.users values
+    ('${PL}', 'd@example.com', '{"signup":"pitch-note","display_name":"디","wants":"player"}'),
+    ('${PL2}', 'e@example.com', '{"signup":"pitch-note","display_name":"이","wants":"player"}');
+`);
+const PP = ids.players;
+const pm = await as("authenticated", COACH, async () => {
+  const rows = await q(`select user_id, wants, status from members where user_id in ($1, $2)`, [PL, PL2]);
+  assert.ok(rows.length === 2 && rows.every((r) => r.wants === "player" && r.status === "pending"));
+  ok("선수로 가입하면 '선수' 신청으로 승인 대기에 올라온다");
+  await rejects(q(`update members set status = 'player' where user_id = $1`, [PL]), /members_player_linked/, "선수 승인은 명단의 선수와 연결해야 한다");
+  await q(`update members set status = 'player', player_id = $2, approved_at = now(), approved_by = $3 where user_id = $1`, [PL, PP.D, COACH]);
+  await rejects(q(`update members set status = 'player', player_id = $2 where user_id = $1`, [PL2, PP.D]), /duplicate key/, "선수 한 명에 계정은 하나");
+  await q(`update members set status = 'player', player_id = $2 where user_id = $1`, [PL2, PP.E]);
+  ok("감독이 선수 계정을 명단의 선수와 연결해 승인한다");
+
+  const [att] = await q(`select a.match_id from match_attendance a join matches m on m.id = a.match_id
+    where a.player_id = $1 and a.status = 'played' and m.status = 'finished' order by m.played_on desc limit 1`, [PP.D]);
+  const [{ id: sid }] = await q(`select id from seasons limit 1`);
+  const [absent] = await q(`insert into matches (season_id, played_on, opponent, our_score, their_score) values ($1, '2026-12-27', 'D 불참 경기', 1, 0) returning id`, [sid]);
+  await q(`select set_attendance($1, $2::jsonb)`, [absent.id, JSON.stringify([{ player_id: PP.A, status: "played" }, { player_id: PP.D, status: "absent" }])]);
+  return { played: att.match_id, absent: absent.id };
+});
+
+await as("authenticated", PL, async () => {
+  const [{ my_role }] = await q(`select my_role()`);
+  assert.equal(my_role, "player");
+  assert.equal((await q(`select * from players`)).length, 0);
+  assert.equal((await q(`select * from matches`)).length, 0);
+  assert.equal((await q(`select * from match_notes`)).length, 0);
+  assert.equal((await q(`select * from goal_events`)).length, 0);
+  ok("선수는 테이블을 직접 못 읽는다 (감독 메모·명단 포함)");
+  await rejects(q(`insert into matches (season_id, played_on, opponent, our_score, their_score) values ($1, '2026-12-28', '선수가', 0, 0)`, [ids.season]), /row-level security/, "선수는 경기를 못 만든다");
+  assert.equal((await q(`delete from match_attendance where match_id = $1 returning *`, [pm.played])).length, 0);
+  await rejects(q(`insert into match_attendance (match_id, player_id, status) values ($1, $2, 'played')`, [pm.absent, PP.D]), /row-level security/, "선수는 출석을 못 바꾼다");
+  assert.equal((await q(`update members set player_id = $2 where user_id = $1 returning *`, [PL, PP.A])).length, 0);
+  ok("선수는 연결된 선수를 스스로 바꿀 수 없다");
+
+  const notes = JSON.stringify([
+    { kind: "good", body: "  압박 타이밍 좋았음 " },
+    { kind: "improve", body: "슈팅 전에 고개 들기" },
+    { kind: "next_focus", body: "왼발 패스" },
+    { kind: "next_focus", body: "" },
+    { kind: "player", body: "무시됨" },
+  ]);
+  const [{ save_my_notes: n }] = await q(`select save_my_notes($1, $2::jsonb)`, [pm.played, notes]);
+  assert.equal(n, 3);
+  const mine = await q(`select kind, body, player_id from player_notes order by sort_order`);
+  assert.deepEqual(mine.map((r) => `${r.kind}:${r.body}`), ["good:압박 타이밍 좋았음", "improve:슈팅 전에 고개 들기", "next_focus:왼발 패스"]);
+  assert.ok(mine.every((r) => r.player_id === PP.D));
+  ok("선수 기록 노트: 잘된 점·아쉬운 점·다음 경기 내 포인트 저장 (빈 칸은 버린다)");
+
+  await rejects(q(`select save_my_notes($1, '[{"kind":"good","body":"안 온 경기"}]'::jsonb)`, [pm.absent]), /내가 온 경기/, "안 온 경기에는 노트를 못 쓴다");
+  await rejects(q(`insert into player_notes (match_id, player_id, kind, body) values ($1, $2, 'good', '남의 노트')`, [pm.played, PP.E]), /row-level security/, "다른 선수 이름으로 노트를 못 쓴다");
+  const four = JSON.stringify(["a", "b", "c", "d"].map((body) => ({ kind: "next_focus", body })));
+  await rejects(q(`select save_my_notes($1, $2::jsonb)`, [pm.played, four]), /3개까지/, "다음 경기 내 포인트는 3개까지");
+
+  const [{ p }] = await q(`select my_page() as p`);
+  assert.equal(p.name, "D");
+  assert.deepEqual(p.my_focus, ["왼발 패스"]);
+  assert.ok(p.noted_match_ids.includes(pm.played));
+  assert.ok(p.matches.every((m) => m.status !== "absent"));
+  assert.equal(JSON.stringify(p).includes("against"), false);
+  assert.equal(JSON.stringify(p).includes("coach_note"), false);
+  ok("내 페이지: 내 기록(불참·실점·감독 메모 없음)과 내 다음 경기 포인트");
+
+  const [{ m }] = await q(`select my_match($1) as m`, [pm.played]);
+  assert.equal(m.attended, true);
+  assert.ok(m.notes.every((n) => ["good", "improve", "next_focus"].includes(n.kind)));
+  assert.equal(JSON.stringify(m).includes("개인 코멘트"), false);
+  const [{ m: ab }] = await q(`select my_match($1) as m`, [pm.absent]);
+  assert.equal(ab.attended, false);
+  ok("선수 경기 화면: '팀 공개' 메모만, 내가 온 경기인지");
+});
+
+await as("authenticated", PL2, async () => {
+  assert.equal((await q(`select * from player_notes`)).length, 0);
+  ok("다른 선수의 노트는 안 보인다");
+});
+await as("authenticated", REC, async () => {
+  assert.equal((await q(`select * from player_notes`)).length, 0);
+  const [{ p }] = await q(`select my_page() as p`);
+  assert.equal(p, null);
+  ok("기록원·승인 대기는 선수 노트와 내 페이지가 안 보인다");
+});
+await as("authenticated", COACH, async () => {
+  assert.equal((await q(`select * from player_notes where player_id = $1`, [PP.D])).length, 3);
+  assert.equal((await q(`update player_notes set body = '감독이 고침' returning id`)).length, 0);
+  ok("감독은 선수 노트를 읽기만 한다");
+  await q(`delete from members where user_id = $1`, [PL]);
+});
+await as("authenticated", PL, async () => {
+  const [{ p }] = await q(`select my_page() as p`);
+  assert.equal(p, null);
+  assert.equal((await q(`select * from player_notes`)).length, 0);
+  ok("선수 연결을 끊으면 바로 아무것도 안 보인다 (노트는 남는다)");
+});
+await as("anon", null, async () => {
+  await rejects(q(`select my_page()`), /permission denied/, "anon은 내 페이지 함수를 못 부른다");
+  await rejects(q(`select * from player_notes`), /permission denied/, "anon은 선수 노트를 못 읽는다");
+});
+
 console.log("\nall DB tests passed");
