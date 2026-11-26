@@ -56,7 +56,7 @@ export default async function CoachLayout({ children }: { children: React.ReactN
     <div className="min-h-dvh">
       <header className="sticky top-0 z-10 border-b border-line bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-xl items-center justify-between px-4">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             {/* 홈 탭과 같은 동작이 겹쳐서 로고는 링크가 아니다 */}
             <span className="font-bold text-pitch">pitch-note</span>
             <CoachNav isCoach={isCoach} />

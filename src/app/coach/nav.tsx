@@ -7,6 +7,7 @@ const TABS = [
   { href: "/coach", label: "홈" },
   { href: "/coach/matches", label: "경기" },
   { href: "/coach/players", label: "선수", coachOnly: true },
+  { href: "/coach/resources", label: "자료", coachOnly: true },
 ];
 
 /** 기록원은 선수 명단 관리 탭이 없다 */
@@ -21,7 +22,7 @@ export function CoachNav({ isCoach }: { isCoach: boolean }) {
             key={t.href}
             href={t.href}
             aria-current={active ? "page" : undefined}
-            className={`rounded-lg px-3 py-2 ${active ? "bg-pitch-soft font-semibold text-pitch" : "text-muted"}`}
+            className={`rounded-lg px-2.5 py-2 sm:px-3 ${active ? "bg-pitch-soft font-semibold text-pitch" : "text-muted"}`}
           >
             {t.label}
           </Link>

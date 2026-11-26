@@ -624,4 +624,85 @@ await as("anon", null, async () => {
   await rejects(q(`select * from player_notes`), /permission denied/, "anon은 선수 노트를 못 읽는다");
 });
 
+// --- 9. 선수용 자료 + 다음 경기 준비 ------------------------------------------
+console.log("선수용 자료 · 다음 경기 준비");
+const res = await as("authenticated", COACH, async () => {
+  await q(`insert into members (user_id, display_name, wants, status, player_id) values ($1, '디', 'player', 'player', $2)`, [PL, PP.D]);
+  const [team] = await q(`insert into resources (title, url, note) values ('압박 기초', 'https://youtu.be/a', '3분') returning id`);
+  const [pivo] = await q(`insert into resources (title, url, audience, position) values ('피보 등지기', 'https://youtu.be/b', 'position', 'PIVO') returning id`);
+  const [ala] = await q(`insert into resources (title, url, audience, position) values ('아라 돌파', 'https://youtu.be/c', 'position', 'ALA') returning id`);
+  const [onlyE] = await q(`insert into resources (title, url, audience, player_id) values ('E 전용', 'https://youtu.be/d', 'player', $1) returning id`, [PP.E]);
+  const [old] = await q(`insert into resources (title, url, is_archived) values ('내린 자료', 'https://youtu.be/e', true) returning id`);
+  await rejects(q(`insert into resources (title, url) values ('x', 'javascript:alert(1)')`), /check constraint/, "자료 링크는 http(s)만");
+  await rejects(q(`insert into resources (title, url, audience) values ('x', 'https://a.b', 'position')`), /check constraint/, "포지션 자료는 포지션이 있어야 한다");
+  ok("감독은 팀·포지션·선수 한 명 대상으로 자료를 올린다");
+  return { team: team.id, pivo: pivo.id, ala: ala.id, onlyE: onlyE.id, old: old.id };
+});
+
+await as("authenticated", PL, async () => {
+  const mine = (await q(`select id from resources`)).map((r) => r.id).sort();
+  assert.deepEqual(mine, [res.team, res.pivo].sort());
+  ok("선수에게는 팀 자료와 내 포지션 자료만 보인다 (다른 포지션·다른 선수·내린 자료는 안 보인다)");
+  await rejects(q(`insert into resources (title, url) values ('선수가', 'https://a.b')`), /row-level security/, "선수는 자료를 못 올린다");
+
+  await q(`insert into resource_views (resource_id, player_id) values ($1, $2)`, [res.team, PP.D]);
+  await rejects(q(`insert into resource_views (resource_id, player_id) values ($1, $2)`, [res.onlyE, PP.D]), /row-level security/, "나에게 안 온 자료는 '봤어요'를 못 누른다");
+  await rejects(q(`insert into resource_views (resource_id, player_id) values ($1, $2)`, [res.pivo, PP.E]), /row-level security/, "다른 선수 이름으로 '봤어요'를 못 누른다");
+  ok("선수는 나에게 온 자료에 '봤어요'를 누른다");
+
+  const [{ p: before }] = await q(`select my_prep() as p`);
+  assert.equal(before.resources_total, 2);
+  assert.equal(before.resources_unseen, 1);
+  assert.equal(before.resources[0].id, res.pivo);
+  assert.equal(before.resources[0].seen, false);
+  assert.equal(before.focus_match_id, pm.played);
+  assert.deepEqual(before.focus_practiced, []);
+  ok("내 준비: 안 본 자료가 먼저, 다음 경기 내 포인트가 나온 경기");
+
+  // 테스트 경기 날짜가 미래라서 훈련 날짜는 마지막 경기 다음 날로
+  const day = "2026-12-31";
+  await q(`insert into training_logs (player_id, trained_on, body, minutes, focus_match_id, focus_orders) values ($1, $3, '벽 패스 100개', 30, $2, '{0}')`, [PP.D, pm.played, day]);
+  await q(`insert into training_logs (player_id, trained_on, focus_match_id, focus_orders) values ($1, $3, $2, '{0}')`, [PP.D, pm.played, day]);
+  await q(`insert into training_logs (player_id, trained_on, body) values ($1, '2026-01-02', '지난 시즌 훈련')`, [PP.D]);
+  await rejects(q(`insert into training_logs (player_id, body) values ($1, '  ')`, [PP.D]), /check constraint/, "빈 훈련 기록은 안 된다");
+  await rejects(q(`insert into training_logs (player_id, focus_orders) values ($1, '{0}')`, [PP.D]), /check constraint/, "포인트 체크는 어느 노트인지 있어야 한다");
+  await rejects(q(`insert into training_logs (player_id, focus_match_id, focus_orders) values ($1, $2, '{5}')`, [PP.D, pm.played]), /check constraint/, "포인트 번호는 1~3번만");
+  await rejects(q(`insert into training_logs (player_id, body) values ($1, '남의 훈련')`, [PP.E]), /row-level security/, "다른 선수 이름으로 훈련 기록을 못 쓴다");
+  await rejects(q(`insert into matches (season_id, played_on, opponent, our_score, their_score) values ($1, current_date, '여전히', 0, 0)`, [ids.season]), /row-level security/, "선수는 여전히 공식 경기 기록을 못 쓴다");
+  const [{ p: after }] = await q(`select my_prep() as p`);
+  assert.deepEqual(after.focus_practiced, [0]);
+  assert.equal(after.recent_trainings.length, 3);
+  assert.equal(after.trainings_since, 2);
+  ok("선수 개인 훈련 기록과 포인트 연습 체크");
+});
+
+await as("authenticated", PL2, async () => {
+  const mine = (await q(`select id from resources`)).map((r) => r.id).sort();
+  assert.deepEqual(mine, [res.team, res.ala, res.onlyE].sort());
+  assert.equal((await q(`select * from training_logs`)).length, 0);
+  assert.equal((await q(`select * from resource_views`)).length, 0);
+  ok("다른 선수의 훈련 기록·'봤어요'는 안 보인다");
+});
+await as("authenticated", REC, async () => {
+  for (const t of ["resources", "resource_views", "training_logs"]) assert.equal((await q(`select * from ${t}`)).length, 0);
+  assert.equal((await q(`select * from prep_summary()`)).length, 0);
+  const [{ p }] = await q(`select my_prep() as p`);
+  assert.equal(p, null);
+  ok("기록원·승인 대기는 자료·훈련 기록·준비 요약이 안 보인다");
+});
+await as("authenticated", COACH, async () => {
+  assert.equal((await q(`update training_logs set body = '감독이 고침' returning id`)).length, 0);
+  ok("감독은 훈련 기록을 읽기만 한다");
+  const rows = await q(`select * from prep_summary()`);
+  const d = rows.find((r) => r.player_id === PP.D);
+  assert.deepEqual([d.trainings, d.minutes, d.focus_set, d.focus_practiced, d.resources, d.resources_seen], [2, 30, 1, 1, 2, 1]);
+  const e = rows.find((r) => r.player_id === PP.E);
+  assert.deepEqual([e.trainings, e.resources, e.resources_seen], [0, 3, 0]);
+  ok("감독: 선수별 준비 한 줄 (훈련 수·분, 포인트 연습, 자료 본 수)");
+});
+await as("anon", null, async () => {
+  for (const t of ["resources", "resource_views", "training_logs"]) await rejects(q(`select * from ${t}`), /permission denied/, `anon은 ${t}를 못 읽는다`);
+  await rejects(q(`select my_prep()`), /permission denied/, "anon은 내 준비 함수를 못 부른다");
+});
+
 console.log("\nall DB tests passed");
