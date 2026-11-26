@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { signup, type SignupState } from "./actions";
 import { MIN_PASSWORD } from "./rules";
-import { WantsPicker } from "./wants-picker";
 
-export function SignupForm() {
+/** 가입 신청. wants=player는 /signup, recorder는 /login/recorder (감독 로그인 아래) */
+export function SignupForm({ wants }: { wants: "player" | "recorder" }) {
   const [state, action, pending] = useActionState<SignupState, FormData>(signup, { error: null });
 
   if (state.sentTo) {
@@ -38,14 +38,14 @@ export function SignupForm() {
         <span className="text-sm text-muted">비밀번호 ({MIN_PASSWORD}자 이상)</span>
         <input name="password" type="password" autoComplete="new-password" minLength={MIN_PASSWORD} required className="input mt-1" />
       </label>
-      <WantsPicker />
+      <input type="hidden" name="wants" value={wants} />
       {state.error && (
         <p role="alert" className="text-sm text-danger">
           {state.error}
         </p>
       )}
       <button type="submit" disabled={pending} className="btn-primary w-full">
-        {pending ? "보내는 중…" : "가입 신청"}
+        {pending ? "보내는 중…" : wants === "player" ? "선수 가입 신청" : "기록원 신청"}
       </button>
     </form>
   );

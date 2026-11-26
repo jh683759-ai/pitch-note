@@ -13,10 +13,16 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <p className="mb-6 rounded-xl bg-pitch-soft px-4 py-3 text-sm text-pitch">메일 인증이 끝났어요. 로그인하세요.</p>
       )}
       <LoginForm next={next} />
+      <p className="mt-3 text-center text-xs text-muted">
+        감독 대신 경기를 기록할 팀원이라면{" "}
+        <Link href="/login/recorder" className="text-pitch underline">
+          기록원 신청
+        </Link>
+      </p>
       <div className="mt-8 border-t border-line pt-6 text-center">
-        <p className="text-sm text-muted">아직 계정이 없는 팀원인가요?</p>
+        <p className="text-sm text-muted">아직 계정이 없는 선수인가요?</p>
         <Link href="/signup" className="btn-ghost mt-2 w-full">
-          가입 신청 (선수·기록원)
+          선수 가입
         </Link>
       </div>
     </main>
