@@ -57,3 +57,16 @@ export async function toggleSeen(resourceId: string, seen: boolean) {
   }
   revalidatePath("/me", "layout");
 }
+
+/** 다음 경기 참석 응답 (본인). 같은 걸 다시 누르면 취소. */
+export async function setMyRsvp(matchId: string, answer: "yes" | "no" | null): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const { data: pid } = await supabase.rpc("my_player_id");
+  if (!pid) return { error: "선수 계정만 응답할 수 있어요." };
+  const { error } = answer
+    ? await supabase.from("match_rsvp").upsert({ match_id: matchId, player_id: pid, answer })
+    : await supabase.from("match_rsvp").delete().eq("match_id", matchId).eq("player_id", pid);
+  if (error) return { error: "저장하지 못했어요. 경기가 이미 끝났을 수 있어요." };
+  revalidatePath("/me", "layout");
+  return { error: null };
+}

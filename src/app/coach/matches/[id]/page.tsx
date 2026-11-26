@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sharePath, siteUrl } from "@/lib/site";
 import { CopyButton } from "../../share/share-controls";
 import { getRole, staffNames } from "@/lib/role";
+import { UpcomingHub } from "./upcoming-hub";
 
 export const metadata = { title: "경기 · pitch-note" };
 
@@ -14,6 +15,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const [{ match, roster, events, tags, notes }, role, staff] = await Promise.all([loadMatch(id), getRole(), staffNames()]);
   const isCoach = role === "coach";
+  if (match.status === "scheduled") return <UpcomingHub match={match} notes={notes} isCoach={isCoach} />;
   const supabase = await createClient();
   const { data: link } = await supabase
     .from("share_links")

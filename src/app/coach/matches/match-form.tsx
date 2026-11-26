@@ -7,23 +7,41 @@ import { ErrorBox, TapChip } from "./ui";
 
 type Props = {
   action: (prev: ActionResult, form: FormData) => Promise<ActionResult>;
-  match?: Pick<Match, "played_on" | "opponent" | "venue" | "match_type">;
+  match?: Pick<Match, "played_on" | "opponent" | "venue" | "match_type" | "kickoff_time">;
   today: string;
   recentOpponents: string[];
   submitLabel: string;
+  /** 다가오는 경기: 시작 시간 칸, 오늘 이후만 */
+  upcoming?: boolean;
 };
 
-export function MatchForm({ action, match, today, recentOpponents, submitLabel }: Props) {
+export function MatchForm({ action, match, today, recentOpponents, submitLabel, upcoming }: Props) {
   const [state, formAction, pending] = useActionState(action, { error: null });
   const [opponent, setOpponent] = useState(match?.opponent ?? "");
   const [type, setType] = useState<string>(match?.match_type ?? "friendly");
 
   return (
     <form action={formAction} className="space-y-6">
-      <label className="block">
-        <span className="text-sm text-muted">날짜</span>
-        <input type="date" name="played_on" required defaultValue={match?.played_on ?? today} max="2100-12-31" className="input mt-1" />
-      </label>
+      <div className={upcoming ? "grid grid-cols-[3fr_2fr] gap-2" : ""}>
+        <label className="block">
+          <span className="text-sm text-muted">날짜</span>
+          <input
+            type="date"
+            name="played_on"
+            required
+            defaultValue={match?.played_on ?? today}
+            min={upcoming && !match ? today : undefined}
+            max="2100-12-31"
+            className="input mt-1"
+          />
+        </label>
+        {upcoming && (
+          <label className="block">
+            <span className="text-sm text-muted">시작 (선택)</span>
+            <input type="time" name="kickoff_time" defaultValue={match?.kickoff_time?.slice(0, 5) ?? ""} step={600} className="input mt-1" />
+          </label>
+        )}
+      </div>
 
       <div>
         <label className="block">

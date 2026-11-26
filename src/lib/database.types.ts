@@ -339,6 +339,91 @@ export type Database = {
           },
         ];
       };
+      match_lineup: {
+        Row: {
+          match_id: string;
+          player_id: string;
+          position: string | null;
+          squad: number | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          match_id: string;
+          player_id: string;
+          position?: string | null;
+          squad?: number | null;
+        };
+        Update: {
+          match_id?: string;
+          player_id?: string;
+          position?: string | null;
+          squad?: number | null;
+        };
+        Relationships: [];
+      };
+      match_resources: {
+        Row: {
+          match_id: string;
+          resource_id: string;
+          sort_order: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          match_id: string;
+          resource_id: string;
+          sort_order?: number;
+        };
+        Update: {
+          match_id?: string;
+          resource_id?: string;
+          sort_order?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "match_resources_resource_id_fkey";
+            columns: ["resource_id"];
+            isOneToOne: false;
+            referencedRelation: "resources";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      match_rsvp: {
+        Row: {
+          answer: string;
+          answered_by: string | null;
+          match_id: string;
+          note: string | null;
+          player_id: string;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          answer: string;
+          answered_by?: string | null;
+          match_id: string;
+          note?: string | null;
+          player_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          answer?: string;
+          answered_by?: string | null;
+          match_id?: string;
+          note?: string | null;
+          player_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "match_rsvp_match_id_fkey";
+            columns: ["match_id"];
+            isOneToOne: false;
+            referencedRelation: "matches";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       matches: {
         Row: {
           created_by: string | null;
@@ -881,6 +966,11 @@ export type Database = {
       my_player_id: { Args: Record<PropertyKey, never>; Returns: string };
       my_page: { Args: Record<PropertyKey, never>; Returns: Json };
       my_prep: { Args: Record<PropertyKey, never>; Returns: Json };
+      my_next_match: { Args: Record<PropertyKey, never>; Returns: Json };
+      save_match_plan: {
+        Args: { p_match_id: string; p_points: Json; p_scout: Json; p_resources: string[]; p_lineup: Json };
+        Returns: undefined;
+      };
       my_position: { Args: Record<PropertyKey, never>; Returns: string };
       prep_summary: {
         Args: Record<PropertyKey, never>;

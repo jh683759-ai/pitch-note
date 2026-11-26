@@ -9,7 +9,9 @@ import {
   MAX_NEXT_FOCUS,
   MAX_ON_COURT,
   parseMatchForm,
+  todayKST,
   type AttendanceStatus,
+  type RsvpAnswer,
   type ReviewKind,
   type Side,
   type Visibility,
@@ -204,4 +206,94 @@ export async function saveReview(matchId: string, notes: ReviewNoteInput[], mvpP
 
   refresh(matchId);
   redirect(`/coach/matches/${matchId}`);
+}
+
+// ---------------------------------------------------------------------------
+// 다가오는 경기 (계획 + 참석 응답)
+// ---------------------------------------------------------------------------
+export async function createUpcomingMatch(_prev: ActionResult, form: FormData): Promise<ActionResult> {
+  if ((await getRole()) !== "coach") return { error: "다음 경기는 감독만 만들 수 있어요." };
+  const parsed = parseMatchForm(form);
+  if (!parsed.ok) return { error: parsed.error };
+  if (parsed.value.played_on < todayKST()) return { error: "지난 날짜예요. 끝난 경기는 '+ 경기 기록'으로 적어 주세요." };
+
+  const supabase = await createClient();
+  const { data: seasonId, error: seasonError } = await supabase.rpc("ensure_season_for", {
+    p_date: parsed.value.played_on,
+  });
+  if (seasonError) return { error: friendlyMatchError(seasonError) };
+
+  const { data, error } = await supabase
+    .from("matches")
+    .insert({ ...parsed.value, season_id: seasonId, status: "scheduled" })
+    .select("id")
+    .single();
+  if (error) return { error: friendlyMatchError(error) };
+
+  refresh();
+  revalidatePath("/coach");
+  redirect(`/coach/matches/${data.id}/plan?new=1`);
+}
+
+export type PlanInput = {
+  points: string[];
+  scout: { body: string; visibility: Visibility }[];
+  resourceIds: string[];
+  lineup: { player_id: string; position: string | null; squad: number | null }[];
+};
+
+export async function saveMatchPlan(matchId: string, plan: PlanInput): Promise<ActionResult> {
+  if ((await getRole()) !== "coach") return { error: "경기 계획은 감독만 쓸 수 있어요." };
+  const points = plan.points.map((p) => p.trim().slice(0, 200)).filter(Boolean);
+  if (points.length > MAX_NEXT_FOCUS) return { error: `팀 포인트는 ${MAX_NEXT_FOCUS}개까지예요.` };
+  const scout = plan.scout
+    .map((s) => ({ body: s.body.trim().slice(0, 500), visibility: s.visibility === "team" ? "team" : "coach" }))
+    .filter((s) => s.body);
+  const positions = ["GK", "FIXO", "ALA", "PIVO"];
+  const lineup = plan.lineup
+    .map((l) => ({
+      player_id: l.player_id,
+      position: l.position && positions.includes(l.position) ? l.position : null,
+      squad: l.squad && [1, 2, 3].includes(l.squad) ? l.squad : null,
+    }))
+    .filter((l) => l.position || l.squad);
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("save_match_plan", {
+    p_match_id: matchId,
+    p_points: points,
+    p_scout: scout,
+    p_resources: plan.resourceIds,
+    p_lineup: lineup,
+  });
+  if (error) return { error: friendlyMatchError(error) };
+  refresh(matchId);
+  revalidatePath("/coach");
+  redirect(`/coach/matches/${matchId}`);
+}
+
+/** 감독이 대신 참석 응답 (계정 없는 선수, 단톡방으로 답한 선수). answer=null이면 응답 지우기 */
+export async function setRsvpForPlayer(matchId: string, playerId: string, answer: RsvpAnswer | null): Promise<ActionResult> {
+  if ((await getRole()) !== "coach") return { error: "감독만 대신 응답할 수 있어요." };
+  const supabase = await createClient();
+  const { error } = answer
+    ? await supabase.from("match_rsvp").upsert({ match_id: matchId, player_id: playerId, answer })
+    : await supabase.from("match_rsvp").delete().eq("match_id", matchId).eq("player_id", playerId);
+  if (error) return { error: friendlyMatchError(error) };
+  refresh(matchId);
+  return { error: null };
+}
+
+/** 경기가 끝나면 같은 경기를 '끝난 경기 0:0'으로 바꾸고 출석부터 적는다 */
+export async function finishMatch(matchId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("matches")
+    .update({ status: "finished", our_score: 0, their_score: 0 })
+    .eq("id", matchId)
+    .eq("status", "scheduled");
+  if (error) return { error: friendlyMatchError(error) };
+  refresh(matchId);
+  revalidatePath("/coach");
+  redirect(`/coach/matches/${matchId}/attendance?new=1`);
 }

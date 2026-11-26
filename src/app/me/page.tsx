@@ -6,12 +6,14 @@ import { getMyPage } from "@/lib/me";
 import { PlayerGrowth } from "@/components/player-growth";
 import { getMyPrep } from "@/lib/prep";
 import { ResourceList } from "./resource-list";
+import { getMyNextMatch } from "@/lib/next-match";
+import { NextMatchCard } from "./next-match-card";
 
 export const metadata = { title: "내 기록 · pitch-note" };
 
-// 선수 첫 화면: 지금 할 일(노트 쓰기 → 다음 경기 준비 → 자료)이 위, 기록은 아래.
+// 선수 첫 화면: 지금 할 일(다음 경기 → 노트 쓰기 → 내 준비 → 자료)이 위, 기록은 아래.
 export default async function MyPage({ searchParams }: { searchParams: Promise<{ trained?: string }> }) {
-  const [p, prep, sp] = await Promise.all([getMyPage(), getMyPrep(), searchParams]);
+  const [p, prep, next, sp] = await Promise.all([getMyPage(), getMyPrep(), getMyNextMatch(), searchParams]);
   if (!p) redirect("/coach");
 
   const noted = new Set(p.noted_match_ids);
@@ -30,6 +32,8 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<{
         </div>
       </div>
 
+      {next && <NextMatchCard m={next} />}
+
       {p.todo_match && (
         <Link href={`/me/m/${p.todo_match.id}`} className="card flex items-center gap-3 border-pitch p-4 ring-1 ring-pitch/30">
           <span className="min-w-0 flex-1">
@@ -44,7 +48,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<{
 
       {/* 다음 경기 준비: 내 포인트(연습하면 ✓) → 감독님 팀 포인트 → 오늘 연습 기록 */}
       <section className="rounded-2xl bg-pitch-soft p-5">
-        <h2 className="text-sm font-semibold text-pitch">다음 경기 준비</h2>
+        <h2 className="text-sm font-semibold text-pitch">{next ? "내 준비" : "다음 경기 준비"}</h2>
         {p.my_focus.length > 0 ? (
           <ol className="mt-2 space-y-2">
             {p.my_focus.map((f, i) => {
@@ -60,7 +64,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<{
         ) : (
           <p className="mt-2 text-sm text-muted">경기 노트에 &lsquo;다음 경기 내 포인트&rsquo;를 쓰면 여기에 떠요.</p>
         )}
-        {p.team_focus.length > 0 && (
+        {p.team_focus.length > 0 && !next?.points.length && (
           <div className="mt-4 border-t border-pitch/20 pt-3">
             <p className="text-xs font-semibold text-muted">감독님 팀 포인트</p>
             <ul className="mt-1 space-y-1 text-sm">
@@ -94,7 +98,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<{
               </Link>
             )}
           </div>
-          <ResourceList items={prep.resources} />
+          <ResourceList items={prep.resources.filter((r) => !next?.resources.some((x) => x.id === r.id))} />
         </section>
       )}
 

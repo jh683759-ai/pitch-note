@@ -16,11 +16,14 @@ export default async function AttendancePage({
   const { id } = await params;
   const { new: isNew } = await searchParams;
   const supabase = await createClient();
-  const [{ match, roster, events }, active, prev] = await Promise.all([
+  const [{ match, roster, events }, active, prev, rsvpRes] = await Promise.all([
     loadMatch(id),
     loadActivePlayers(),
     supabase.rpc("previous_attendance", { p_match_id: id }),
+    // 미리 받은 참석 응답 (다가오는 경기로 만든 경우)
+    supabase.from("match_rsvp").select("player_id, answer").eq("match_id", id),
   ]);
+  const rsvp = rsvpRes.data ?? [];
 
   // 활동 중인 선수 + 이미 이 경기 명단에 있는 보관 선수
   const players = [...active];
@@ -45,7 +48,13 @@ export default async function AttendancePage({
       <AttendanceForm
         matchId={id}
         players={players.map((p) => ({ id: p.id, name: p.name, jersey: p.jersey_number, membership: p.membership }))}
-        initial={Object.fromEntries(roster.map((r) => [r.player.id, r.status]))}
+        initial={
+          roster.length > 0
+            ? Object.fromEntries(roster.map((r) => [r.player.id, r.status]))
+            : // 출석을 아직 안 적었으면 참석 응답을 기본값으로 (갈게요=출전, 못 가요=불참)
+              Object.fromEntries(rsvp.map((r) => [r.player_id, r.answer === "yes" ? "played" : "absent"]))
+        }
+        fromRsvp={roster.length === 0 && rsvp.length > 0}
         previous={
           source
             ? {
@@ -55,7 +64,7 @@ export default async function AttendancePage({
             : null
         }
         locked={[...locked]}
-        suggestCopy={Boolean(isNew) && roster.length === 0}
+        suggestCopy={Boolean(isNew) && roster.length === 0 && rsvp.length === 0}
       />
     </main>
   );

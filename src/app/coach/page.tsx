@@ -16,6 +16,7 @@ import { sharePath, siteUrl } from "@/lib/site";
 import { GoalDiffBars } from "@/components/goal-diff-bars";
 import { ShareLinkControls } from "./share/share-controls";
 import { getRole } from "@/lib/role";
+import { UpcomingStrip } from "./upcoming-strip";
 
 export const metadata = { title: "홈 · pitch-note" };
 
@@ -53,6 +54,9 @@ export default async function CoachHome() {
     return (
       <main className="pt-6">
         <h1 className="text-2xl font-bold">홈</h1>
+        <div className="mt-4">
+          <UpcomingStrip isCoach={isCoach} />
+        </div>
         <div className="card mt-6 p-6 text-center">
           <p className="font-medium">첫 경기를 기록하면 여기에 지금 상황과 다음 할 일이 떠요</p>
           <p className="mt-1 text-sm text-muted">경기 후 5분이면 돼요. 출석 → 골·실점 → 메모 순서예요.</p>
@@ -131,6 +135,9 @@ export default async function CoachHome() {
   return (
     <main className="space-y-4 pt-6">
       <h1 className="text-2xl font-bold">홈</h1>
+
+      {/* 0. 다가오는 경기 */}
+      <UpcomingStrip isCoach={isCoach} />
 
       {/* 1. 다음 할 일 / 다음 경기 포인트 */}
       {todo && (
