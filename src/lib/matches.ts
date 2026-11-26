@@ -64,6 +64,7 @@ export type MatchInput = {
   opponent: string;
   venue: string | null;
   match_type: MatchType;
+  kickoff_time?: string | null; // 다가오는 경기에서만 (폼에 칸이 있을 때)
 };
 
 export function parseMatchForm(form: FormData): { ok: true; value: MatchInput } | { ok: false; error: string } {
@@ -76,7 +77,12 @@ export function parseMatchForm(form: FormData): { ok: true; value: MatchInput } 
   if (venue.length > 60) return { ok: false, error: "장소는 60자 이내로 입력하세요." };
   const rawType = String(form.get("match_type") ?? "friendly");
   const match_type = (MATCH_TYPES.some((t) => t.value === rawType) ? rawType : "friendly") as MatchType;
-  return { ok: true, value: { played_on, opponent, venue: venue || null, match_type } };
+  const value: MatchInput = { played_on, opponent, venue: venue || null, match_type };
+  if (form.has("kickoff_time")) {
+    const t = String(form.get("kickoff_time") ?? "");
+    value.kickoff_time = /^\d{2}:\d{2}$/.test(t) ? t : null;
+  }
+  return { ok: true, value };
 }
 
 /** Postgres 오류를 감독이 이해할 수 있는 말로. DB 함수가 한국어로 올린 메시지는 그대로 쓴다. */
@@ -86,3 +92,31 @@ export function friendlyMatchError(error: { code?: string; message: string }) {
   if (/[가-힣]/.test(error.message)) return error.message;
   return `저장하지 못했어요: ${error.message}`;
 }
+
+/** "14:00:00" → "오후 2:00" */
+export function formatKickoff(time: string | null | undefined) {
+  if (!time) return null;
+  const [h, m] = time.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  const ampm = h < 12 ? "오전" : "오후";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${ampm} ${h12}:${String(m).padStart(2, "0")}`;
+}
+
+/** 오늘(한국 시간)부터 며칠 남았는지. 오늘=0 */
+export function daysUntil(isoDate: string) {
+  const today = new Date(`${todayKST()}T00:00:00+09:00`).getTime();
+  const d = new Date(`${isoDate}T00:00:00+09:00`).getTime();
+  return Math.round((d - today) / 86_400_000);
+}
+
+export function dDayLabel(isoDate: string) {
+  const n = daysUntil(isoDate);
+  return n === 0 ? "오늘" : n === 1 ? "내일" : n > 0 ? `D-${n}` : "지난 일정";
+}
+
+export const RSVP = [
+  { value: "yes", label: "갈게요" },
+  { value: "no", label: "못 가요" },
+] as const;
+export type RsvpAnswer = (typeof RSVP)[number]["value"];

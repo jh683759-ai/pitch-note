@@ -15,6 +15,7 @@ export function AttendanceForm({
   previous,
   locked,
   suggestCopy,
+  fromRsvp = false,
 }: {
   matchId: string;
   players: P[];
@@ -22,6 +23,7 @@ export function AttendanceForm({
   previous: { label: string; rows: State } | null;
   locked: string[];
   suggestCopy: boolean;
+  fromRsvp?: boolean;
 }) {
   const [players, setPlayers] = useState(initialPlayers);
   const [state, setState] = useState<State>(initial);
@@ -77,6 +79,11 @@ export function AttendanceForm({
 
   return (
     <>
+      {fromRsvp && (
+        <p className="mt-5 rounded-xl bg-pitch-soft px-4 py-3 text-sm text-pitch">
+          참석 응답으로 채워 뒀어요 (갈게요=출전, 못 가요=불참). 실제로 온 사람만 고치세요.
+        </p>
+      )}
       {previous && (
         <button
           type="button"

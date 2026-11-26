@@ -705,4 +705,95 @@ await as("anon", null, async () => {
   await rejects(q(`select my_prep()`), /permission denied/, "anon은 내 준비 함수를 못 부른다");
 });
 
+// --- 10. 다가오는 경기 준비 (계획 + 참석 응답) ---------------------------------
+console.log("다가오는 경기 준비");
+const nm = await as("authenticated", COACH, async () => {
+  await q(`update members set status = 'recorder', approved_at = now(), approved_by = $2 where user_id = $1`, [REC, COACH]);
+  const [m] = await q(`insert into matches (season_id, played_on, kickoff_time, opponent, venue, status) values ($1, '2027-01-10', '14:00', '다음상대', '교회 앞', 'scheduled') returning id`, [ids.season]);
+  ok("감독은 스코어 없이 예정 경기를 만든다");
+  await q(`select save_match_plan($1, $2::jsonb, $3::jsonb, $4::uuid[], $5::jsonb)`, [
+    m.id,
+    JSON.stringify(["킥인은 패턴 2개만", " ", "공 뺏기면 3초 압박"]),
+    JSON.stringify([{ body: "왼쪽 7번 빠름", visibility: "team" }, { body: "상대 GK 킥 약함 (비밀)", visibility: "coach" }]),
+    [res.ala],
+    JSON.stringify([{ player_id: PP.D, position: "PIVO", squad: 1 }, { player_id: PP.E, position: "", squad: 2 }, { player_id: PP.A, position: "", squad: null }]),
+  ]);
+  const notes = await q(`select kind, body, visibility from match_notes where match_id = $1 order by kind, sort_order`, [m.id]);
+  assert.deepEqual(notes.map((n) => `${n.kind}:${n.visibility}:${n.body}`), [
+    "plan:team:킥인은 패턴 2개만", "plan:team:공 뺏기면 3초 압박", "scout:team:왼쪽 7번 빠름", "scout:coach:상대 GK 킥 약함 (비밀)",
+  ]);
+  assert.equal((await q(`select * from match_lineup where match_id = $1`, [m.id])).length, 2);
+  ok("경기 계획 저장: 팀 포인트·상대 메모·자료·예상 포지션 (빈 칸은 버린다)");
+  await rejects(q(`select save_match_plan($1, $2::jsonb, '[]'::jsonb, '{}', '[]'::jsonb)`, [m.id, JSON.stringify(["a", "b", "c", "d"])]), /3개까지/, "팀 포인트는 3개까지");
+  return { id: m.id };
+});
+
+await as("authenticated", REC, async () => {
+  await rejects(q(`select save_match_plan($1, '[]'::jsonb, '[]'::jsonb, '{}', '[]'::jsonb)`, [nm.id]), /감독만/, "기록원은 경기 계획을 못 쓴다");
+});
+
+await as("authenticated", PL, async () => {
+  const [{ n }] = await q(`select my_next_match() as n`);
+  assert.equal(n.id, nm.id);
+  assert.equal(n.kickoff_time, "14:00");
+  assert.deepEqual(n.points, ["킥인은 패턴 2개만", "공 뺏기면 3초 압박"]);
+  assert.deepEqual(n.scout, ["왼쪽 7번 빠름"]);
+  assert.equal(JSON.stringify(n).includes("비밀"), false);
+  assert.deepEqual(n.my_lineup, { position: "PIVO", squad: 1 });
+  assert.equal(n.my_rsvp, null);
+  assert.equal(JSON.stringify(n).includes(PP.E), false);
+  assert.deepEqual(n.resources.map((r) => r.id), [res.ala]);
+  ok("선수 '다음 경기' 카드: 팀 공개만, 내 포지션만 (다른 선수 정보 없음)");
+
+  await q(`insert into resource_views (resource_id, player_id) values ($1, $2)`, [res.ala, PP.D]);
+  ok("경기에 붙은 자료는 포지션이 달라도 '봤어요'를 누를 수 있다");
+
+  await q(`insert into match_rsvp (match_id, player_id, answer, note) values ($1, $2, 'yes', '10분 늦어요')`, [nm.id, PP.D]);
+  await q(`update match_rsvp set answer = 'no' where match_id = $1`, [nm.id]);
+  await q(`update match_rsvp set answer = 'yes' where match_id = $1`, [nm.id]);
+  await rejects(q(`insert into match_rsvp (match_id, player_id, answer) values ($1, $2, 'yes')`, [nm.id, PP.E]), /row-level security/, "다른 선수 대신 응답할 수 없다");
+  await rejects(q(`insert into match_rsvp (match_id, player_id, answer) values ($1, $2, 'yes')`, [pm.played, PP.D]), /row-level security/, "끝난 경기에는 응답할 수 없다");
+  assert.equal((await q(`select * from match_lineup`)).length, 0);
+  assert.equal((await q(`select * from match_resources`)).length, 0);
+  const [{ n: after }] = await q(`select my_next_match() as n`);
+  assert.equal(after.my_rsvp.answer, "yes");
+  assert.equal(after.going, 1);
+  ok("선수는 자기 참석만 응답·변경한다");
+});
+
+await as("authenticated", PL2, async () => {
+  assert.equal((await q(`select * from match_rsvp`)).length, 0);
+  const [{ n }] = await q(`select my_next_match() as n`);
+  assert.deepEqual(n.my_lineup, { position: null, squad: 2 });
+  ok("다른 선수의 응답은 안 보이고, 내 예상 조만 보인다");
+});
+
+await as("authenticated", COACH, async () => {
+  await q(`insert into match_rsvp (match_id, player_id, answer) values ($1, $2, 'no')`, [nm.id, PP.E]);
+  const rows = await q(`select player_id, answer, answered_by from match_rsvp where match_id = $1`, [nm.id]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows.find((r) => r.player_id === PP.E).answered_by, COACH);
+  ok("감독은 응답을 모두 보고, 대신 눌러 줄 수 있다");
+  const [before] = await q(`select count(*)::int as c from player_match_log where match_id = $1`, [nm.id]);
+  assert.equal(before.c, 0);
+  await q(`update matches set status = 'finished', our_score = 0, their_score = 0 where id = $1`, [nm.id]);
+  ok("경기가 끝나면 같은 경기를 끝난 경기로 바꾼다");
+});
+
+await as("authenticated", REC, async () => {
+  assert.equal((await q(`select * from match_rsvp where match_id = $1`, [nm.id])).length, 2);
+  ok("기록원은 출석 기본값용으로 응답을 읽는다");
+});
+
+await as("authenticated", PL, async () => {
+  const [{ n }] = await q(`select my_next_match() as n`);
+  assert.equal(n, null);
+  await rejects(q(`update match_rsvp set answer = 'no' where match_id = $1 returning *`, [nm.id]), /row-level security/, "끝난 경기의 응답은 못 바꾼다");
+  ok("끝난 경기는 '다음 경기' 카드에서 빠진다");
+});
+await as("anon", null, async () => {
+  for (const t of ["match_rsvp", "match_lineup", "match_resources"]) await rejects(q(`select * from ${t}`), /permission denied/, `anon은 ${t}를 못 읽는다`);
+  await rejects(q(`select my_next_match()`), /permission denied/, "anon은 다음 경기 함수를 못 부른다");
+});
+
 console.log("\nall DB tests passed");

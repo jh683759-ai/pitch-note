@@ -21,7 +21,14 @@ export default async function EditMatchPage({ params }: { params: Promise<{ id: 
     <main className="pt-6">
       <BackLink href={`/coach/matches/${id}`}>경기로</BackLink>
       <h1 className="mt-2 mb-6 text-2xl font-bold">경기 정보</h1>
-      <MatchForm action={updateMatch.bind(null, id)} match={match} today={todayKST()} recentOpponents={recent} submitLabel="저장" />
+      <MatchForm
+        action={updateMatch.bind(null, id)}
+        match={match}
+        today={todayKST()}
+        recentOpponents={recent}
+        submitLabel="저장"
+        upcoming={match.status === "scheduled"}
+      />
       {isCoach ? (
         <DeleteMatch id={id} summary={`출석 ${roster.length}명, 골·실점 기록 ${events.length}개`} />
       ) : (
