@@ -261,7 +261,7 @@ export default async function CoachHome() {
   );
 }
 
-/** 기록원 관리 바로가기. 신청이 있으면 눈에 띄게. */
+/** 팀원(선수 계정·기록원) 관리 바로가기. 신청이 있으면 눈에 띄게. */
 function TeamCard({ pending }: { pending: number }) {
   return (
     <Link
@@ -269,9 +269,9 @@ function TeamCard({ pending }: { pending: number }) {
       className={`card flex items-center gap-3 p-4 ${pending > 0 ? "border-pitch ring-1 ring-pitch/30" : ""}`}
     >
       <span className="min-w-0 flex-1">
-        <span className="block font-semibold">기록원 관리</span>
+        <span className="block font-semibold">팀원 관리</span>
         <span className="block text-xs text-muted">
-          {pending > 0 ? `승인 대기 ${pending}명이 있어요` : "내가 경기 뛰는 날 대신 기록할 팀원"}
+          {pending > 0 ? `승인 대기 ${pending}명이 있어요` : "선수 계정 연결, 대신 기록할 기록원"}
         </span>
       </span>
       <span className={`shrink-0 text-sm ${pending > 0 ? "font-semibold text-pitch" : "text-muted"}`}>

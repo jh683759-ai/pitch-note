@@ -13,24 +13,27 @@ export default async function CoachLayout({ children }: { children: React.ReactN
   if (!user) redirect("/login");
 
   const role = await getRole();
+  if (role === "player") redirect("/me");
 
   if (role === "pending" || role === "none") {
-    const { data: me } = await supabase.from("members").select("display_name").maybeSingle();
+    const { data: me } = await supabase.from("members").select("display_name, wants").maybeSingle();
+    const asPlayer = me?.wants === "player";
     return (
       <main className="mx-auto max-w-md px-5 py-10">
         {role === "pending" ? (
           <>
             <h1 className="text-xl font-bold">감독 승인을 기다리고 있어요</h1>
             <p className="mt-3 text-sm text-muted">
-              {me?.display_name ? `${me.display_name}님, ` : ""}가입 신청이 감독에게 전달됐어요. 감독이 승인하면 이 화면을 새로고침했을 때
-              경기 기록 화면이 열려요.
+              {me?.display_name ? `${me.display_name}님, ` : ""}
+              {asPlayer ? "선수" : "기록원"} 신청이 감독에게 전달됐어요. 감독이 승인하면 이 화면을 새로고침했을 때{" "}
+              {asPlayer ? "내 기록 화면" : "경기 기록 화면"}이 열려요.
             </p>
             <p className="mt-2 text-sm text-muted">기록을 보기만 하려면 단톡방의 공유 링크를 쓰면 돼요. 로그인이 필요 없어요.</p>
           </>
         ) : (
           <>
-            <h1 className="text-xl font-bold">아직 기록 권한이 없는 계정이에요</h1>
-            <p className="mt-3 text-sm text-muted">기록원 신청을 하면 감독이 확인하고 승인해요.</p>
+            <h1 className="text-xl font-bold">아직 승인되지 않은 계정이에요</h1>
+            <p className="mt-3 text-sm text-muted">선수나 기록원으로 신청하면 감독이 확인하고 승인해요.</p>
             <RequestAccess defaultName={String(user.user_metadata?.display_name ?? "")} />
             <details className="mt-8 text-xs text-muted">
               <summary className="cursor-pointer">감독 계정을 처음 등록하는 경우</summary>

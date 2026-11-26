@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { membershipLabel, positionLabel } from "@/lib/players";
+import { formatMatchDate } from "@/lib/matches";
 import { PlayerGrowth, type GrowthRow } from "@/components/player-growth";
 
 export const metadata = { title: "선수 기록 · pitch-note" };
@@ -14,7 +15,7 @@ export default async function PlayerPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
-  const [playerRes, logRes, mvpRes, statsRes] = await Promise.all([
+  const [playerRes, logRes, mvpRes, statsRes, notesRes, accountRes] = await Promise.all([
     supabase.from("players").select("*").eq("id", id).maybeSingle(),
     supabase.from("player_match_log").select("*").eq("player_id", id),
     supabase.from("matches").select("id").eq("mvp_player_id", id),
@@ -22,11 +23,17 @@ export default async function PlayerPage({
       .from("player_season_stats")
       .select("season_id, attendance_rate, regular_matches")
       .eq("player_id", id),
+    // 선수가 직접 쓴 기록 노트 (감독은 읽기만)
+    supabase
+      .from("player_notes")
+      .select("match_id, kind, body, sort_order")
+      .eq("player_id", id),
+    supabase.from("members").select("user_id").eq("player_id", id).maybeSingle(),
   ]);
   if (playerRes.error) throw playerRes.error;
   const player = playerRes.data;
   if (!player) notFound();
-  for (const r of [logRes, mvpRes, statsRes]) if (r.error) throw r.error;
+  for (const r of [logRes, mvpRes, statsRes, notesRes, accountRes]) if (r.error) throw r.error;
 
   const mvp = new Set((mvpRes.data ?? []).map((m) => m.id));
   const log = logRes.data ?? [];
@@ -56,6 +63,21 @@ export default async function PlayerPage({
       ? Math.round(Number(season.attendance_rate) * 100)
       : null;
 
+  // 선수 노트는 최근 경기 2개만 (많이 보여주면 지금 할 일이 묻힌다)
+  const byMatch = new Map<string, { kind: string; body: string; sort_order: number }[]>();
+  for (const n of notesRes.data ?? []) byMatch.set(n.match_id, [...(byMatch.get(n.match_id) ?? []), n]);
+  const recentNotes = [...ordered]
+    .reverse()
+    .filter((l) => byMatch.has(l.match_id ?? ""))
+    .slice(0, 2)
+    .map((l) => ({
+      match_id: l.match_id ?? "",
+      played_on: l.played_on ?? "",
+      opponent: l.opponent ?? "",
+      notes: (byMatch.get(l.match_id ?? "") ?? []).sort((a, b) => a.sort_order - b.sort_order),
+    }));
+  const hasAccount = !!accountRes.data;
+
   return (
     <main className="pt-6 pb-10">
       <Link
@@ -76,6 +98,7 @@ export default async function PlayerPage({
               {membershipLabel(player.membership)}
               {!player.is_active && " · 보관됨"}
               {rate != null && ` · 출석률 ${rate}%`}
+              {hasAccount && " · 선수 계정 연결됨"}
             </p>
           </div>
         </div>
@@ -90,6 +113,29 @@ export default async function PlayerPage({
         <p className="mb-4 rounded-xl bg-background px-3 py-2 text-sm text-muted">
           메모: {player.coach_note}
         </p>
+      )}
+      {recentNotes.length > 0 && (
+        <section className="card mb-4 p-4">
+          <h2 className="font-semibold">선수 기록 노트</h2>
+          <p className="text-xs text-muted">{player.name} 선수가 직접 쓴 노트예요. 최근 2경기.</p>
+          <ul className="mt-2 divide-y divide-line">
+            {recentNotes.map((r) => (
+              <li key={r.match_id} className="py-3 text-sm">
+                <p className="text-xs text-muted">
+                  {formatMatchDate(r.played_on)} vs {r.opponent}
+                </p>
+                {r.notes.map((n, i) => (
+                  <p key={i} className="mt-1">
+                    <span className={`mr-1 text-xs font-semibold ${n.kind === "good" ? "text-pitch" : "text-muted"}`}>
+                      {n.kind === "good" ? "잘된 점" : n.kind === "improve" ? "아쉬운 점" : "다음 포인트"}
+                    </span>
+                    {n.body}
+                  </p>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       <PlayerGrowth
         rows={rows}

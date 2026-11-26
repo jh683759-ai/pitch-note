@@ -8,7 +8,8 @@ export type LoginState = { error: string | null };
 function safeNext(value: FormDataEntryValue | null) {
   const next = typeof value === "string" ? value : "";
   // 외부 주소로 튕기는 오픈 리다이렉트 방지
-  return next.startsWith("/coach") ? next : "/coach";
+  // /coach가 역할을 보고 선수 계정은 /me로 보낸다
+  return next.startsWith("/coach") || next === "/me" || next.startsWith("/me/") ? next : "/coach";
 }
 
 export async function login(_prev: LoginState, form: FormData): Promise<LoginState> {

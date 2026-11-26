@@ -33,10 +33,12 @@ export function PlayerGrowth({
   rows,
   coach,
   matchHref,
+  noted,
 }: {
   rows: GrowthRow[]; // 오래된 순
   coach: boolean;
   matchHref: (matchId: string) => string;
+  noted?: Set<string>; // 선수 기록 노트를 쓴 경기
 }) {
   const visible = coach ? rows : rows.filter((r) => r.status !== "absent");
   const played = visible.filter((r) => r.status === "played");
@@ -121,6 +123,7 @@ export function PlayerGrowth({
               <Link href={matchHref(r.match_id)} className="flex min-h-12 items-center gap-3 py-2 text-sm">
                 <span className="w-24 shrink-0 text-xs text-muted">{formatMatchDate(r.played_on)}</span>
                 <span className="min-w-0 flex-1 truncate">{r.opponent}</span>
+                {noted?.has(r.match_id) && <span className="shrink-0 text-xs text-muted">노트</span>}
                 {r.mvp && <span className="rounded-full bg-pitch-soft px-2 py-0.5 text-xs font-semibold text-pitch">MVP</span>}
                 <span className="shrink-0 text-right tabular-nums">
                   {r.status === "played" ? (
