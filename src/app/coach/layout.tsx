@@ -4,6 +4,7 @@ import { getRole } from "@/lib/role";
 import { logout } from "@/app/login/actions";
 import { CoachNav } from "./nav";
 import { RequestAccess } from "./request-access";
+import { InstallApp } from "@/components/install-app";
 
 export default async function CoachLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -69,7 +70,10 @@ export default async function CoachLayout({ children }: { children: React.ReactN
           </div>
         </div>
       </header>
-      <div className="mx-auto max-w-xl px-4 pb-24">{children}</div>
+      <div className="mx-auto max-w-xl px-4 pb-24">
+        <InstallApp />
+        {children}
+      </div>
     </div>
   );
 }
