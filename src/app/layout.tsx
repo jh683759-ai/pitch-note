@@ -10,6 +10,8 @@ export const metadata: Metadata = {
     title: "pitch-note",
     statusBarStyle: "default",
   },
+  // 옛 iOS(16.3 이하)는 manifest 대신 이 태그로 전체 화면 앱을 연다.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 // 크롬의 설치 이벤트는 화면이 뜨기 전에 올 수 있어서 가장 먼저 붙잡아 둔다. 서비스 워커도 여기서 등록.
