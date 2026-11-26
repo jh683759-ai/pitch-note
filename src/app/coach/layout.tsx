@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getRole } from "@/lib/role";
 import { logout } from "@/app/login/actions";
-import { CoachNav } from "./nav";
+import { TabBar, type Tab } from "@/components/tab-bar";
+import { AccountMenu } from "@/components/account-menu";
 import { RequestAccess } from "./request-access";
 import { InstallApp } from "@/components/install-app";
 
@@ -53,27 +54,44 @@ export default async function CoachLayout({ children }: { children: React.ReactN
   }
 
   const isCoach = role === "coach";
+  const { data: who } = isCoach
+    ? await supabase.from("coaches").select("display_name").eq("user_id", user.id).maybeSingle()
+    : await supabase.from("members").select("display_name").eq("user_id", user.id).maybeSingle();
+  const displayName = who?.display_name ?? String(user.user_metadata?.display_name ?? "");
+
+  // 가운데 '기록'이 경기 직후 가장 많이 누르는 버튼. 기록원은 선수·자료 탭이 없다.
+  const tabs: Tab[] = isCoach
+    ? [
+        { href: "/coach", label: "홈", icon: "home" },
+        { href: "/coach/matches", label: "경기", icon: "calendar" },
+        { href: "/coach/matches/new", label: "기록", icon: "plus", primary: true },
+        { href: "/coach/players", label: "선수", icon: "people" },
+        { href: "/coach/resources", label: "자료", icon: "doc" },
+      ]
+    : [
+        { href: "/coach", label: "홈", icon: "home" },
+        { href: "/coach/matches/new", label: "기록", icon: "plus", primary: true },
+        { href: "/coach/matches", label: "경기", icon: "calendar" },
+      ];
+  const showTabsOn = ["/coach", "/coach/matches", "/coach/players", "/coach/resources", "/coach/team"];
+
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-10 border-b border-line bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-xl items-center justify-between px-4">
-          <div className="flex items-center gap-2 sm:gap-4">
-            {/* 홈 탭과 같은 동작이 겹쳐서 로고는 링크가 아니다 */}
-            <span className="font-bold text-pitch">pitch-note</span>
-            <CoachNav isCoach={isCoach} />
-          </div>
-          <div className="flex items-center gap-3">
-            {!isCoach && <span className="rounded-full bg-pitch-soft px-2 py-0.5 text-xs font-semibold text-pitch">기록원</span>}
-            <form action={logout}>
-              <button className="text-sm text-muted">로그아웃</button>
-            </form>
-          </div>
+          <span className="font-bold text-pitch">pitch-note</span>
+          <AccountMenu
+            initial={displayName.trim().charAt(0) || "나"}
+            role={`${displayName || "내 계정"} · ${isCoach ? "감독" : "기록원"}`}
+            links={isCoach ? [{ href: "/coach/team", label: "팀원 관리" }] : []}
+          />
         </div>
       </header>
-      <div className="mx-auto max-w-xl px-4 pb-24">
+      <div className="mx-auto max-w-xl px-4 pb-28">
         <InstallApp />
         {children}
       </div>
+      <TabBar tabs={tabs} showOn={showTabsOn} />
     </div>
   );
 }
