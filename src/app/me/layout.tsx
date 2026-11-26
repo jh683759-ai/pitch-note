@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getRole } from "@/lib/role";
 import { logout } from "@/app/login/actions";
+import { InstallApp } from "@/components/install-app";
 
 // 선수 계정 화면. 감독·기록원·승인 대기는 /coach가 맡는다.
 export default async function MeLayout({ children }: { children: React.ReactNode }) {
@@ -25,7 +26,10 @@ export default async function MeLayout({ children }: { children: React.ReactNode
           </div>
         </div>
       </header>
-      <div className="mx-auto max-w-xl px-4 pt-6 pb-24">{children}</div>
+      <div className="mx-auto max-w-xl px-4 pt-6 pb-24">
+        <InstallApp />
+        {children}
+      </div>
     </div>
   );
 }

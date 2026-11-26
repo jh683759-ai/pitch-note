@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { InstallApp } from "@/components/install-app";
 
 export default function Home() {
   return (
@@ -16,6 +17,7 @@ export default function Home() {
       <Link href="/login" className="btn-primary mt-8">
         팀 로그인
       </Link>
+      <InstallApp variant="button" />
     </main>
   );
 }
