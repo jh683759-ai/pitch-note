@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { membershipLabel, positionLabel } from "@/lib/players";
 import { formatMatchDate } from "@/lib/matches";
 import { PlayerGrowth, type GrowthRow } from "@/components/player-growth";
+import { prepLine } from "@/lib/prep";
 
 export const metadata = { title: "선수 기록 · pitch-note" };
 
@@ -15,7 +16,7 @@ export default async function PlayerPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
-  const [playerRes, logRes, mvpRes, statsRes, notesRes, accountRes] = await Promise.all([
+  const [playerRes, logRes, mvpRes, statsRes, notesRes, accountRes, trainRes, prepRes] = await Promise.all([
     supabase.from("players").select("*").eq("id", id).maybeSingle(),
     supabase.from("player_match_log").select("*").eq("player_id", id),
     supabase.from("matches").select("id").eq("mvp_player_id", id),
@@ -29,11 +30,14 @@ export default async function PlayerPage({
       .select("match_id, kind, body, sort_order")
       .eq("player_id", id),
     supabase.from("members").select("user_id").eq("player_id", id).maybeSingle(),
+    // 선수가 직접 쓴 개인 훈련 기록 (감독은 읽기만)
+    supabase.from("training_logs").select("id, trained_on, body, minutes").eq("player_id", id).order("trained_on", { ascending: false }).order("created_at", { ascending: false }).limit(3),
+    supabase.rpc("prep_summary"),
   ]);
   if (playerRes.error) throw playerRes.error;
   const player = playerRes.data;
   if (!player) notFound();
-  for (const r of [logRes, mvpRes, statsRes, notesRes, accountRes]) if (r.error) throw r.error;
+  for (const r of [logRes, mvpRes, statsRes, notesRes, accountRes, trainRes]) if (r.error) throw r.error;
 
   const mvp = new Set((mvpRes.data ?? []).map((m) => m.id));
   const log = logRes.data ?? [];
@@ -77,6 +81,8 @@ export default async function PlayerPage({
       notes: (byMatch.get(l.match_id ?? "") ?? []).sort((a, b) => a.sort_order - b.sort_order),
     }));
   const hasAccount = !!accountRes.data;
+  const prep = hasAccount ? prepLine((prepRes.data ?? []).find((r) => r.player_id === id)) : null;
+  const trainings = trainRes.data ?? [];
 
   return (
     <main className="pt-6 pb-10">
@@ -113,6 +119,26 @@ export default async function PlayerPage({
         <p className="mb-4 rounded-xl bg-background px-3 py-2 text-sm text-muted">
           메모: {player.coach_note}
         </p>
+      )}
+      {prep && (
+        <section className="card mb-4 p-4">
+          <h2 className="font-semibold">다음 경기 준비</h2>
+          <p className="text-sm text-pitch">{prep}</p>
+          <p className="text-xs text-muted">지난 경기 뒤 선수가 직접 쓴 연습 기록이에요. 경기 기록에는 안 들어가요.</p>
+          {trainings.length > 0 && (
+            <ul className="mt-2 space-y-1 text-sm">
+              {trainings.map((t) => (
+                <li key={t.id}>
+                  <span className="mr-1 text-xs text-muted">
+                    {formatMatchDate(t.trained_on)}
+                    {t.minutes ? ` · ${t.minutes}분` : ""}
+                  </span>
+                  {t.body ?? "포인트 연습"}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
       {recentNotes.length > 0 && (
         <section className="card mb-4 p-4">

@@ -523,6 +523,68 @@ export type Database = {
         };
         Relationships: [];
       };
+      resources: {
+        Row: {
+          audience: string;
+          created_at: string;
+          created_by: string | null;
+          id: string;
+          is_archived: boolean;
+          note: string | null;
+          player_id: string | null;
+          position: string | null;
+          title: string;
+          updated_at: string;
+          url: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          audience?: string;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          is_archived?: boolean;
+          note?: string | null;
+          player_id?: string | null;
+          position?: string | null;
+          title: string;
+          updated_at?: string;
+          url: string;
+        };
+        Update: {
+          audience?: string;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          is_archived?: boolean;
+          note?: string | null;
+          player_id?: string | null;
+          position?: string | null;
+          title?: string;
+          updated_at?: string;
+          url?: string;
+        };
+        Relationships: [];
+      };
+      resource_views: {
+        Row: {
+          player_id: string;
+          resource_id: string;
+          seen_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          player_id: string;
+          resource_id: string;
+          seen_at?: string;
+        };
+        Update: {
+          player_id?: string;
+          resource_id?: string;
+          seen_at?: string;
+        };
+        Relationships: [];
+      };
       seasons: {
         Row: {
           created_at: string;
@@ -570,6 +632,43 @@ export type Database = {
           label?: string | null;
           revoked_at?: string | null;
           token?: string;
+        };
+        Relationships: [];
+      };
+      training_logs: {
+        Row: {
+          body: string | null;
+          created_at: string;
+          focus_match_id: string | null;
+          focus_orders: number[];
+          id: string;
+          minutes: number | null;
+          player_id: string;
+          trained_on: string;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          body?: string | null;
+          created_at?: string;
+          focus_match_id?: string | null;
+          focus_orders?: number[];
+          id?: string;
+          minutes?: number | null;
+          player_id: string;
+          trained_on?: string;
+          updated_at?: string;
+        };
+        Update: {
+          body?: string | null;
+          created_at?: string;
+          focus_match_id?: string | null;
+          focus_orders?: number[];
+          id?: string;
+          minutes?: number | null;
+          player_id?: string;
+          trained_on?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -781,6 +880,21 @@ export type Database = {
       my_role: { Args: Record<PropertyKey, never>; Returns: string };
       my_player_id: { Args: Record<PropertyKey, never>; Returns: string };
       my_page: { Args: Record<PropertyKey, never>; Returns: Json };
+      my_prep: { Args: Record<PropertyKey, never>; Returns: Json };
+      my_position: { Args: Record<PropertyKey, never>; Returns: string };
+      prep_summary: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          player_id: string;
+          trainings: number;
+          minutes: number;
+          focus_set: number;
+          focus_practiced: number;
+          resources: number;
+          resources_seen: number;
+          last_trained_on: string | null;
+        }[];
+      };
       my_match: { Args: { p_match_id: string }; Returns: Json };
       save_my_notes: { Args: { p_match_id: string; p_notes: Json }; Returns: number };
       staff_names: { Args: Record<PropertyKey, never>; Returns: { display_name: string; user_id: string }[] };

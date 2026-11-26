@@ -1,22 +1,28 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { positionLabel, type Player } from "@/lib/players";
+import { prepLine } from "@/lib/prep";
 
 export const metadata = { title: "선수 · pitch-note" };
 
 export default async function PlayersPage() {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("players")
-    .select("*")
-    .order("jersey_number", { ascending: true, nullsFirst: false })
-    .order("name");
+  const [{ data, error }, prepRes, membersRes] = await Promise.all([
+    supabase.from("players").select("*").order("jersey_number", { ascending: true, nullsFirst: false }).order("name"),
+    // 마지막 경기 이후 선수별 준비 (선수 계정이 있는 선수만 보여 준다)
+    supabase.rpc("prep_summary"),
+    supabase.from("members").select("player_id").eq("status", "player"),
+  ]);
 
   if (error) {
     return <p className="mt-8 text-danger">선수 목록을 불러오지 못했어요: {error.message}</p>;
   }
 
   const players = data ?? [];
+  const linked = new Set((membersRes.data ?? []).map((m) => m.player_id));
+  const prep = new Map(
+    (prepRes.data ?? []).filter((r) => linked.has(r.player_id)).map((r) => [r.player_id, prepLine(r)] as const),
+  );
   const regulars = players.filter((p) => p.is_active && p.membership === "regular");
   const guests = players.filter((p) => p.is_active && p.membership === "guest");
   const archived = players.filter((p) => !p.is_active);
@@ -42,20 +48,30 @@ export default async function PlayersPage() {
         </div>
       )}
 
-      <PlayerSection title="고정 멤버" players={regulars} />
-      <PlayerSection title="용병" players={guests} />
+      <PlayerSection title="고정 멤버" players={regulars} prep={prep} />
+      <PlayerSection title="용병" players={guests} prep={prep} />
 
       {archived.length > 0 && (
         <details className="mt-8">
           <summary className="cursor-pointer text-sm text-muted">보관한 선수 {archived.length}명</summary>
-          <PlayerSection players={archived} muted />
+          <PlayerSection players={archived} prep={prep} muted />
         </details>
       )}
     </main>
   );
 }
 
-function PlayerSection({ title, players, muted }: { title?: string; players: Player[]; muted?: boolean }) {
+function PlayerSection({
+  title,
+  players,
+  prep,
+  muted,
+}: {
+  title?: string;
+  players: Player[];
+  prep: Map<string, string | null>;
+  muted?: boolean;
+}) {
   if (players.length === 0) return null;
   return (
     <section className="mt-6">
@@ -69,6 +85,7 @@ function PlayerSection({ title, players, muted }: { title?: string; players: Pla
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{p.name}</span>
+                {prep.get(p.id) && <span className="block truncate text-xs text-pitch">준비 · {prep.get(p.id)}</span>}
                 {p.coach_note && <span className="block truncate text-xs text-muted">{p.coach_note}</span>}
               </span>
               <span className="text-sm text-muted">{positionLabel(p.main_position)}</span>
