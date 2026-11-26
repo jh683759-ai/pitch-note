@@ -141,7 +141,7 @@ export default async function CoachHome() {
           <p className="mt-1 text-[17px] leading-snug font-bold">{todo.text}</p>
           <Link
             href={todo.href}
-            className="mt-3 flex min-h-11 items-center justify-center rounded-xl bg-white text-[15px] font-semibold text-pitch dark:bg-black"
+            className="mt-3 flex min-h-11 items-center justify-center rounded-xl bg-white text-[15px] font-semibold text-pitch dark:bg-background"
           >
             {todo.cta}
           </Link>
@@ -204,7 +204,7 @@ export default async function CoachHome() {
         <div className="flex items-baseline justify-between">
           <h2 className="font-semibold">{seasonRes.data?.name ?? "이번 시즌"}</h2>
           <Link href="/coach/matches" className="text-sm text-muted">
-            경기 {record.played}개 →
+            경기 {record.played}개 ›
           </Link>
         </div>
         <div className="mt-3 flex items-end justify-between gap-3">
