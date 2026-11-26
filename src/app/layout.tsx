@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next";
+// 본문 글꼴. 글자 범위별로 나뉜 파일이라 화면에 쓴 글자만 받는다.
+import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { formatMatchDate } from "@/lib/matches";
+import { formatMatchDate, todayKST } from "@/lib/matches";
 import {
   absentStreak,
   bestAndWorst,
@@ -13,7 +13,6 @@ import {
   type FinishedMatch,
 } from "@/lib/dashboard";
 import { sharePath, siteUrl } from "@/lib/site";
-import { GoalDiffBars } from "@/components/goal-diff-bars";
 import { ShareLinkControls } from "./share/share-controls";
 import { getRole } from "@/lib/role";
 import { UpcomingStrip } from "./upcoming-strip";
@@ -52,20 +51,17 @@ export default async function CoachHome() {
 
   if (all.length === 0) {
     return (
-      <main className="pt-6">
-        <h1 className="text-2xl font-bold">홈</h1>
-        <div className="mt-4">
-          <UpcomingStrip isCoach={isCoach} />
-        </div>
-        <div className="card mt-6 p-6 text-center">
+      <main className="space-y-3 pt-4">
+        <Today />
+        <UpcomingStrip isCoach={isCoach} />
+        <div className="card p-6 text-center">
           <p className="font-medium">첫 경기를 기록하면 여기에 지금 상황과 다음 할 일이 떠요</p>
           <p className="mt-1 text-sm text-muted">경기 후 5분이면 돼요. 출석 → 골·실점 → 메모 순서예요.</p>
           <Link href="/coach/matches/new" className="btn-primary mt-4">
             + 경기 기록
           </Link>
         </div>
-        {isCoach && <TeamCard pending={pendingCount} />}
-        {isCoach && <ShareSection url={shareUrl} />}
+        {isCoach && <SettingsList pending={pendingCount} shareUrl={shareUrl} />}
       </main>
     );
   }
@@ -90,15 +86,15 @@ export default async function CoachHome() {
   const hasReview = latestNotes.some((n) => n.kind === "good" || n.kind === "improve");
   const todo =
     Number(latestSummary?.players_played ?? 0) === 0
-      ? { text: "출석이 비어 있어요", href: `/coach/matches/${latest.id}/attendance`, cta: "체크하기" }
+      ? { text: "출석이 비어 있어요", href: `/coach/matches/${latest.id}/attendance`, cta: "출석 체크하기" }
       : Number(latestSummary?.events_missing ?? 0) > 0
         ? {
             text: `골·실점 기록이 ${latestSummary?.events_missing}개 남았어요`,
             href: `/coach/matches/${latest.id}`,
-            cta: "이어서",
+            cta: "이어서 기록하기",
           }
         : isCoach && !hasReview && focus.length === 0
-          ? { text: "메모와 다음 경기 포인트가 비어 있어요", href: `/coach/matches/${latest.id}/notes`, cta: "쓰기" }
+          ? { text: "메모와 다음 경기 포인트가 비어 있어요", href: `/coach/matches/${latest.id}/notes`, cta: "메모 쓰기 · 2분이면 돼요" }
           : null;
 
   // --- 신호 (켜질 때만) -------------------------------------------------------
@@ -133,42 +129,48 @@ export default async function CoachHome() {
   const comboNames = (c: Combo) => c.ids.map((id) => name.get(id) ?? "?").join(" · ");
 
   return (
-    <main className="space-y-4 pt-6">
-      <h1 className="text-2xl font-bold">홈</h1>
+    <main className="space-y-3 pt-4">
+      <Today />
 
-      {/* 0. 다가오는 경기 */}
-      <UpcomingStrip isCoach={isCoach} />
-
-      {/* 1. 다음 할 일 / 다음 경기 포인트 */}
+      {/* 1. 지금 할 일: 화면에서 가장 눈에 띄는 것은 이것 하나 */}
       {todo && (
-        <Link href={todo.href} className="card flex items-center gap-3 border-pitch p-4 ring-1 ring-pitch/30">
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs text-muted">
-              지난 경기 · {formatMatchDate(latest.played_on)} {latest.opponent}
-            </span>
-            <span className="block font-semibold">{todo.text}</span>
-          </span>
-          <span className="shrink-0 font-semibold text-pitch">{todo.cta} →</span>
-        </Link>
+        <section className="rounded-2xl bg-pitch p-4 text-white dark:text-black">
+          <p className="text-xs font-medium opacity-75">
+            지금 할 일 · {formatMatchDate(latest.played_on)} {latest.opponent}전
+          </p>
+          <p className="mt-1 text-[17px] leading-snug font-bold">{todo.text}</p>
+          <Link
+            href={todo.href}
+            className="mt-3 flex min-h-11 items-center justify-center rounded-xl bg-white text-[15px] font-semibold text-pitch dark:bg-black"
+          >
+            {todo.cta}
+          </Link>
+        </section>
       )}
 
-      <section className="rounded-2xl bg-pitch-soft p-4">
-        <h2 className="text-sm font-semibold text-pitch">다음 경기 포인트</h2>
+      {/* 0. 다가오는 경기 + 그 경기에 가져갈 포인트 */}
+      <UpcomingStrip isCoach={isCoach}>
+        <h2 className="text-xs font-semibold text-pitch">다음 경기 포인트</h2>
         {focus.length > 0 ? (
-          <ol className="mt-2 space-y-1.5">
-            {focus.map((f, i) => (
-              <li key={i} className="flex gap-2 font-medium">
-                <span className="text-pitch">{i + 1}</span>
-                <span>{f}</span>
-              </li>
-            ))}
-          </ol>
+          <>
+            <ol className="mt-1.5 space-y-1">
+              {focus.map((f, i) => (
+                <li key={i} className="flex gap-2 font-medium">
+                  <span className="text-pitch tabular-nums">{i + 1}</span>
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-1.5 text-xs text-muted">
+              {formatMatchDate(latest.played_on)} {latest.opponent}전에서 정한 것
+            </p>
+          </>
         ) : (
-          <p className="mt-1 text-sm text-muted">
+          <p className="mt-1 text-[13px] text-muted">
             {isCoach ? (
               <>
-                지난 경기 메모에서 1~3개 정해두면 다음 경기 전에 여기 그대로 떠요.{" "}
-                <Link href={`/coach/matches/${latest.id}/notes`} className="text-pitch underline">
+                아직 없어요. 지난 경기 메모에서 1~3개 정하면 여기 떠요.{" "}
+                <Link href={`/coach/matches/${latest.id}/notes`} className="font-semibold text-pitch">
                   정하기
                 </Link>
               </>
@@ -177,10 +179,7 @@ export default async function CoachHome() {
             )}
           </p>
         )}
-        <p className="mt-2 text-xs text-muted">
-          {formatMatchDate(latest.played_on)} {latest.opponent}전에서 정한 것
-        </p>
-      </section>
+      </UpcomingStrip>
 
       {/* 2. 신호: 켜진 것만. 없으면 조용히 한 줄 */}
       {absent.length + causes.length > 0 ? (
@@ -197,7 +196,7 @@ export default async function CoachHome() {
           ))}
         </section>
       ) : (
-        <p className="px-1 text-sm text-muted">✓ 지금 특별히 챙길 신호는 없어요.</p>
+        <p className="px-1 text-[13px] text-muted">✓ 지금 특별히 챙길 신호는 없어요</p>
       )}
 
       {/* 3. 시즌 */}
@@ -208,19 +207,14 @@ export default async function CoachHome() {
             경기 {record.played}개 →
           </Link>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <div>
-            <p className="text-3xl font-bold tabular-nums">
-              {record.w}
-              <span className="mx-1 text-base font-medium text-muted">승</span>
-              {record.d}
-              <span className="mx-1 text-base font-medium text-muted">무</span>
-              {record.l}
-              <span className="ml-1 text-base font-medium text-muted">패</span>
-            </p>
+        <div className="mt-3 flex items-end justify-between gap-3">
+          <div className="flex gap-1.5 tabular-nums">
+            <RecordChip n={record.w} label="승" tone="win" />
+            <RecordChip n={record.d} label="무" tone="draw" />
+            <RecordChip n={record.l} label="패" tone="loss" />
           </div>
-          <div className="text-right">
-            <p className="text-3xl font-bold tabular-nums">
+          <div className="text-right tabular-nums">
+            <p className="text-2xl font-bold">
               {record.gf}:{record.ga}
             </p>
             <p className="text-xs text-muted">
@@ -230,15 +224,25 @@ export default async function CoachHome() {
           </div>
         </div>
         {trend.length >= 2 && (
-          <div className="mt-4">
-            <p className="mb-1 text-xs text-muted">경기별 득실 (최근 {trend.length}경기, 오른쪽이 최근)</p>
-            <GoalDiffBars
-              matches={trend.map((m) => ({
-                id: m.id,
-                label: `${formatMatchDate(m.played_on)} ${m.opponent} ${m.our_score}:${m.their_score}`,
-                diff: m.our_score - m.their_score,
-              }))}
-            />
+          <div className="mt-4 flex items-center gap-2">
+            <span className="shrink-0 text-[11px] text-muted">최근</span>
+            <span className="flex flex-wrap gap-1">
+              {trend.map((m) => {
+                const r = m.our_score > m.their_score ? "win" : m.our_score < m.their_score ? "loss" : "draw";
+                return (
+                  <Link
+                    key={m.id}
+                    href={`/coach/matches/${m.id}`}
+                    title={`${formatMatchDate(m.played_on)} ${m.opponent} ${m.our_score}:${m.their_score}`}
+                    aria-label={`${formatMatchDate(m.played_on)} ${m.opponent} ${m.our_score}:${m.their_score}`}
+                    className={`flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold text-white ${FORM_BG[r]}`}
+                  >
+                    {r === "win" ? "승" : r === "loss" ? "패" : "무"}
+                  </Link>
+                );
+              })}
+            </span>
+            <span className="shrink-0 text-[11px] text-muted">→ 최근</span>
           </div>
         )}
         {goalType && (
@@ -262,29 +266,57 @@ export default async function CoachHome() {
         </section>
       )}
 
-      {isCoach && <TeamCard pending={pendingCount} />}
-      {isCoach && <ShareSection url={shareUrl} />}
+      {isCoach && <SettingsList pending={pendingCount} shareUrl={shareUrl} />}
     </main>
   );
 }
 
-/** 팀원(선수 계정·기록원) 관리 바로가기. 신청이 있으면 눈에 띄게. */
-function TeamCard({ pending }: { pending: number }) {
+/** 오늘 날짜 한 줄. 탭 이름과 겹치는 '홈' 제목 대신. */
+function Today() {
+  return <p className="px-1 text-[13px] text-muted">{formatMatchDate(todayKST())}</p>;
+}
+
+const FORM_BG = { win: "bg-pitch dark:text-black", draw: "bg-muted", loss: "bg-danger" } as const;
+
+function RecordChip({ n, label, tone }: { n: number; label: string; tone: "win" | "draw" | "loss" }) {
+  const cls = {
+    win: "bg-pitch-soft text-pitch",
+    draw: "bg-background text-foreground",
+    loss: "bg-danger/10 text-danger",
+  }[tone];
   return (
-    <Link
-      href="/coach/team"
-      className={`card flex items-center gap-3 p-4 ${pending > 0 ? "border-pitch ring-1 ring-pitch/30" : ""}`}
-    >
-      <span className="min-w-0 flex-1">
-        <span className="block font-semibold">팀원 관리</span>
-        <span className="block text-xs text-muted">
-          {pending > 0 ? `승인 대기 ${pending}명이 있어요` : "선수 계정 연결, 대신 기록할 기록원"}
+    <span className={`min-w-11 rounded-lg px-2.5 py-1 text-center ${cls}`}>
+      <b className="block text-xl leading-tight">{n}</b>
+      <span className="text-[11px]">{label}</span>
+    </span>
+  );
+}
+
+/** 한 번 설정하면 끝나는 것들은 목록 두 줄로. 승인 대기가 있을 때만 눈에 띄게. */
+function SettingsList({ pending, shareUrl }: { pending: number; shareUrl: string | null }) {
+  return (
+    <section className="card divide-y divide-line">
+      <Link href="/coach/team" className="flex min-h-12 items-center gap-3 px-4">
+        <span className="flex-1">팀원 관리</span>
+        <span className={`text-sm ${pending > 0 ? "font-semibold text-pitch" : "text-muted"}`}>
+          {pending > 0 ? `승인 대기 ${pending}명 ›` : "›"}
         </span>
-      </span>
-      <span className={`shrink-0 text-sm ${pending > 0 ? "font-semibold text-pitch" : "text-muted"}`}>
-        {pending > 0 ? "확인 →" : "→"}
-      </span>
-    </Link>
+      </Link>
+      <details className="group">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 [&::-webkit-details-marker]:hidden">
+          <span className="flex-1">선수용 공유 링크</span>
+          <span className={`text-sm ${shareUrl ? "text-muted" : "font-semibold text-pitch"}`}>
+            {shareUrl ? "복사·관리" : "만들기"} <span className="inline-block transition group-open:rotate-90">›</span>
+          </span>
+        </summary>
+        <div className="px-4 pb-4">
+          <p className="mb-3 text-xs text-muted">
+            로그인 없이 볼 수 있어요. 경기 결과, MVP, &lsquo;팀 공개&rsquo; 메모, 다음 경기 포인트, 그리고 선수마다 본인 기록만 보여요.
+          </p>
+          <ShareLinkControls url={shareUrl} />
+        </div>
+      </details>
+    </section>
   );
 }
 
@@ -311,17 +343,5 @@ function ComboRow({ label, tone, names, c }: { label: string; tone: "pitch" | "d
         <span className="ml-1 text-xs text-muted">({c.events}번)</span>
       </span>
     </div>
-  );
-}
-
-function ShareSection({ url }: { url: string | null }) {
-  return (
-    <section className="card p-4">
-      <h2 className="font-semibold">선수용 공유 링크</h2>
-      <p className="mt-0.5 mb-3 text-xs text-muted">
-        로그인 없이 볼 수 있어요. 경기 결과, MVP, &lsquo;팀 공개&rsquo; 메모, 다음 경기 포인트, 그리고 선수마다 본인 기록만 보여요.
-      </p>
-      <ShareLinkControls url={url} />
-    </section>
   );
 }
