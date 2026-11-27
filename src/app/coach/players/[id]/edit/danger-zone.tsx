@@ -16,7 +16,7 @@ export function DangerZone({ id, name, isActive, records }: { id: string; name: 
   const error = archiveState.error ?? deleteState.error ?? wipeState.error;
 
   return (
-    <section className="mt-10 border-t border-line pt-6">
+    <section data-no-guard className="mt-10 border-t border-line pt-6">
       <form action={archive}>
         <button className="btn-ghost w-full" disabled={archiving}>
           {isActive ? "보관하기 (명단에서 빼기, 기록은 유지)" : "다시 활동으로 되돌리기"}

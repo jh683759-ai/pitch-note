@@ -31,7 +31,7 @@ export function MemberButtons({
   if (kind === "pending" && wants === "player") {
     const isNew = playerId === NEW;
     return (
-      <div className="mt-2 space-y-2">
+      <div data-no-guard className="mt-2 space-y-2">
         <label className="block">
           <span className="text-xs text-muted">명단의 어느 선수인가요?</span>
           <select value={playerId} onChange={(e) => setPlayerId(e.target.value)} className="input mt-1">
