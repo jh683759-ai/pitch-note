@@ -959,6 +959,8 @@ export type Database = {
       };
     };
     Functions: {
+      delete_player_with_records: { Args: { p_player_id: string; p_confirm_name: string }; Returns: undefined };
+      approve_player_as_new: { Args: { p_user_id: string; p_name: string; p_membership?: string }; Returns: string };
       ensure_season_for: { Args: { p_date: string }; Returns: string };
       is_coach: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_recorder: { Args: Record<PropertyKey, never>; Returns: boolean };

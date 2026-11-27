@@ -33,7 +33,11 @@ export default async function TeamPage() {
   const linkable = allPlayers
     .filter((p) => !linked.has(p.id))
     .sort((a, b) => Number(a.membership !== "regular") - Number(b.membership !== "regular"))
-    .map((p) => ({ id: p.id, label: `${p.jersey_number != null ? `${p.jersey_number} ` : ""}${p.name}${p.membership === "guest" ? " (용병)" : ""}` }));
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      label: `${p.jersey_number != null ? `${p.jersey_number} ` : ""}${p.name}${p.membership === "guest" ? " (용병)" : ""}`,
+    }));
 
   return (
     <main className="space-y-4 pt-6">
@@ -50,7 +54,8 @@ export default async function TeamPage() {
         </h2>
         {pending.length === 0 ? (
           <p className="mt-2 text-sm text-muted">
-            새 신청이 없어요. 선수는 로그인 화면의 &lsquo;선수 가입&rsquo;, 기록원은 로그인 버튼 아래 &lsquo;기록원 신청&rsquo;으로 가입해요.
+            새 신청이 없어요. 선수는 로그인 화면의 &lsquo;선수 가입&rsquo;, 기록원은 로그인 버튼 아래 &lsquo;기록원 신청&rsquo;으로
+            가입해요.
           </p>
         ) : (
           <ul className="mt-2 divide-y divide-line">

@@ -7,7 +7,9 @@ import { getRole } from "@/lib/role";
 export type MemberState = { error: string | null };
 
 function cleanName(value: FormDataEntryValue | null) {
-  return String(value ?? "").trim().slice(0, 20);
+  return String(value ?? "")
+    .trim()
+    .slice(0, 20);
 }
 
 /** 선수·기록원 신청 (본인). DB 정책이 '승인 대기'로만 넣게 한다. */
@@ -53,6 +55,22 @@ export async function approveMember(userId: string, playerId?: string): Promise<
   }
   revalidatePath("/coach/team");
   revalidatePath("/coach");
+  return { error: null };
+}
+
+/** 명단에 없는 사람의 선수 신청: 신청 정보로 새 선수를 만들고 연결·승인까지 한 번에 */
+export async function approveAsNewPlayer(userId: string, name: string, membership: "regular" | "guest"): Promise<MemberState> {
+  const denied = await coachOnly();
+  if (denied) return denied;
+  const clean = name.trim().slice(0, 30);
+  if (!clean) return { error: "선수 이름을 입력하세요." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("approve_player_as_new", { p_user_id: userId, p_name: clean, p_membership: membership });
+  if (error) {
+    if (error.code === "23514") return { error: "이미 처리된 신청이에요. 새로고침해 보세요." };
+    return { error: "등록하지 못했어요." };
+  }
+  revalidatePath("/coach", "layout");
   return { error: null };
 }
 

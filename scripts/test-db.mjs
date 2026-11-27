@@ -409,7 +409,7 @@ await as("anon", null, async () => {
 // --- 7. 4주차: 기록원 (가입 신청 → 감독 승인) -------------------------------
 console.log("기록원 (4주차)");
 const REC = "00000000-0000-0000-0000-0000000000ec";
-const OTHER = "00000000-0000-0000-0000-0000000000e2";
+const OTHER = "00000000-0000-0000-0000-00000000f0a2";
 await db.exec(`
   insert into auth.users values
     ('${REC}', 'rec@example.com', '{"signup":"pitch-note","display_name":"주장"}'),
@@ -794,6 +794,72 @@ await as("authenticated", PL, async () => {
 await as("anon", null, async () => {
   for (const t of ["match_rsvp", "match_lineup", "match_resources"]) await rejects(q(`select * from ${t}`), /permission denied/, `anon은 ${t}를 못 읽는다`);
   await rejects(q(`select my_next_match()`), /permission denied/, "anon은 다음 경기 함수를 못 부른다");
+});
+
+// --- 11. 선수 완전 삭제(기록까지) + 신청을 새 선수로 바로 등록 ------------------
+console.log("선수 완전 삭제 + 새 선수로 바로 등록");
+const GANA_U = "00000000-0000-0000-0000-000000009a1a";
+const NEW_U = "00000000-0000-0000-0000-000000009a1b";
+await db.exec(`
+  insert into auth.users values
+    ('${GANA_U}', 'gana@example.com', '{"signup":"pitch-note","display_name":"가나","wants":"player"}'),
+    ('${NEW_U}', 'new@example.com', '{"signup":"pitch-note","display_name":"새친구","wants":"player"}');
+`);
+const gana = await as("authenticated", COACH, async () => {
+  const [p] = await q(`insert into players (name, jersey_number) values ('가나', 77) returning id`);
+  await q(`update members set status = 'player', player_id = $2 where user_id = $1`, [GANA_U, p.id]);
+  const [m] = await q(`insert into matches (season_id, played_on, opponent, our_score, their_score) values ($1, '2026-12-30', '테스트 경기', 2, 1) returning id`, [ids.season]);
+  for (const pid of [p.id, PP.GK, PP.A, PP.B, PP.C]) await q(`insert into match_attendance (match_id, player_id) values ($1, $2)`, [m.id, pid]);
+  const [g1] = await q(`insert into goal_events (match_id, side, seq, scorer_id, assist_id, goalkeeper_id) values ($1, 'for', 1, $2, $3, $4) returning id`, [m.id, p.id, PP.A, PP.GK]);
+  const [g2] = await q(`insert into goal_events (match_id, side, seq, scorer_id, assist_id, goalkeeper_id) values ($1, 'for', 2, $2, $3, $4) returning id`, [m.id, PP.B, p.id, PP.GK]);
+  for (const pid of [p.id, PP.A, PP.B, PP.C]) await q(`insert into goal_event_on_court values ($1, $2), ($3, $2)`, [g1.id, pid, g2.id]);
+  await q(`update matches set mvp_player_id = $2 where id = $1`, [m.id, p.id]);
+  await q(`insert into match_notes (match_id, kind, player_id, body) values ($1, 'player', $2, '테스트 코멘트')`, [m.id, p.id]);
+  return { id: p.id, match: m.id };
+});
+
+await as("authenticated", REC, () =>
+  rejects(q(`select delete_player_with_records($1, '가나')`, [gana.id]), /감독만/, "기록원은 선수를 기록까지 지울 수 없다"));
+await as("authenticated", GANA_U, () =>
+  rejects(q(`select delete_player_with_records($1, '가나')`, [gana.id]), /감독만/, "선수 본인도 못 지운다"));
+await as("anon", null, () =>
+  rejects(q(`select delete_player_with_records($1, '가나')`, [gana.id]), /permission denied/, "anon은 함수를 못 부른다"));
+
+await as("authenticated", COACH, async () => {
+  await rejects(q(`delete from players where id = $1`, [gana.id]), /foreign key/, "그냥 삭제는 여전히 기록이 막는다");
+  await rejects(q(`select delete_player_with_records($1, '가')`, [gana.id]), /이름이 맞지/, "이름을 정확히 입력해야 지워진다");
+  await q(`select delete_player_with_records($1, ' 가나 ')`, [gana.id]);
+  assert.equal((await q(`select * from players where id = $1`, [gana.id])).length, 0);
+  assert.equal((await q(`select * from match_attendance where player_id = $1`, [gana.id])).length, 0);
+  assert.equal((await q(`select * from goal_event_on_court where player_id = $1`, [gana.id])).length, 0);
+  assert.equal((await q(`select * from match_notes where player_id = $1`, [gana.id])).length, 0);
+  ok("감독은 이름을 확인하고 선수를 기록까지 지운다");
+  const goals = await q(`select seq, scorer_id, assist_id from goal_events where match_id = $1 order by seq`, [gana.match]);
+  assert.equal(goals.length, 2);
+  assert.equal(goals[0].scorer_id, null);
+  assert.equal(goals[1].scorer_id, PP.B);
+  assert.equal(goals[1].assist_id, null);
+  const [m] = await q(`select our_score, their_score, mvp_player_id from matches where id = $1`, [gana.match]);
+  assert.deepEqual([m.our_score, m.their_score, m.mvp_player_id], [2, 1, null]);
+  assert.equal((await q(`select * from goal_event_on_court e join goal_events g on g.id = e.event_id where g.match_id = $1`, [gana.match])).length, 6);
+  ok("골·스코어·다른 선수 기록은 남고, 그 선수 이름 칸과 MVP만 비워진다");
+  const [mem] = await q(`select status, player_id from members where user_id = $1`, [GANA_U]);
+  assert.deepEqual([mem.status, mem.player_id], ["pending", null]);
+  ok("연결된 선수 계정은 지우지 않고 승인 대기로 되돌린다");
+});
+
+await as("authenticated", REC, () =>
+  rejects(q(`select approve_player_as_new($1, '새친구')`, [NEW_U]), /감독만/, "기록원은 새 선수로 승인할 수 없다"));
+await as("authenticated", COACH, async () => {
+  const [{ approve_player_as_new: pid }] = await q(`select approve_player_as_new($1, '  ', 'guest')`, [NEW_U]);
+  const [p] = await q(`select name, membership, is_active from players where id = $1`, [pid]);
+  assert.deepEqual([p.name, p.membership, p.is_active], ["새친구", "guest", true]);
+  const [mem] = await q(`select status, player_id, approved_by from members where user_id = $1`, [NEW_U]);
+  assert.deepEqual([mem.status, mem.player_id, mem.approved_by], ["player", pid, COACH]);
+  ok("신청 이름으로 새 선수를 만들고 연결·승인까지 한 번에");
+  await rejects(q(`select approve_player_as_new($1, '또')`, [NEW_U]), /승인 대기/, "이미 승인된 신청은 다시 못 만든다");
+  assert.equal((await q(`select * from players where name = '또'`)).length, 0);
+  ok("실패하면 선수도 만들어지지 않는다");
 });
 
 console.log("\nall DB tests passed");
