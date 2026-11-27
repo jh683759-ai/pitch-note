@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getRole } from "@/lib/role";
@@ -6,6 +8,7 @@ import { TabBar, type Tab } from "@/components/tab-bar";
 import { AccountMenu } from "@/components/account-menu";
 import { RequestAccess } from "./request-access";
 import { InstallApp } from "@/components/install-app";
+import { UnsavedGuard } from "@/components/unsaved-guard";
 
 export default async function CoachLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -79,7 +82,9 @@ export default async function CoachLayout({ children }: { children: React.ReactN
     <div className="min-h-dvh">
       <header className="sticky top-0 z-10 border-b border-line bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-xl items-center justify-between px-4">
-          <span className="font-bold text-pitch">pitch-note</span>
+          <Link href="/coach" aria-label="홈으로" className="-ml-2 flex min-h-10 items-center px-2 font-bold text-pitch">
+            pitch-note
+          </Link>
           <AccountMenu
             initial={displayName.trim().charAt(0) || "나"}
             role={`${displayName || "내 계정"} · ${isCoach ? "감독" : "기록원"}`}
@@ -91,6 +96,9 @@ export default async function CoachLayout({ children }: { children: React.ReactN
         <InstallApp />
         {children}
       </div>
+      <Suspense>
+        <UnsavedGuard />
+      </Suspense>
       <TabBar tabs={tabs} showOn={showTabsOn} />
     </div>
   );

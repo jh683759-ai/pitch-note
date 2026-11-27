@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { markSaved } from "@/components/unsaved-guard";
 import { MAX_MY_FOCUS, type PlayerNote } from "@/lib/player-notes";
 import { ErrorBox } from "@/app/coach/matches/ui";
 import { saveMyNotes } from "./actions";
@@ -28,6 +29,7 @@ export function NoteForm({ matchId, initial }: { matchId: string; initial: Playe
       const res = await saveMyNotes(matchId, notes);
       setError(res.error);
       setSaved(!res.error);
+      if (!res.error) markSaved();
     });
 
   const touch = () => setSaved(false);
